@@ -1,4 +1,4 @@
-# partymod-thps3
+# PARTYMOD for THPS3
 This is a patch for THPS3 1.01 to improve its input handling as well as smooth out a few other parts of the PC port.
 The patch is designed to keep the game as original as possible, and leave its files unmodified.
 
