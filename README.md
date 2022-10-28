@@ -3,7 +3,7 @@ This is a patch for THPS3 1.01 to improve its input handling as well as smooth o
 The patch is designed to keep the game as original as possible, and leave its files unmodified.
 
 ### Features and Fixes
-* Replaced input system entirely with new system based off of SDL2
+* Replaced input system entirely with new, modern system using the SDL2 library
 * Movement stick now controls menus
 * Improved cursor handling, no longer moving the cursor and only showing it when relevant
 * Improved window handling allowing for custom resolutions and configurable windowing
