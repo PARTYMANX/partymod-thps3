@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <time.h>
 
 #include <SDL2/SDL.h>
 
@@ -12,7 +13,8 @@
 #include <script.h>
 
 #define VERSION_NUMBER_MAJOR 1
-#define VERSION_NUMBER_MINOR 0
+#define VERSION_NUMBER_MINOR 1
+#define VERSION_NUMBER_PATCH 0
 
 int __stdcall playIntroMovie(char *filename, int unk) {
 	void *(__stdcall *getMoviePlayer)(int) = (void *)0x00406d40;
@@ -108,7 +110,7 @@ void __cdecl fixedDrawWorldAgain(int16_t param_1, int param_2) {
 	uint32_t *currentTexture = 0x0090675c;
 	int *numMeshes = 0x005c94c8;
 	int *meshList = 0x00901758;
-	void (__cdecl *RwGetRenderState)(int, void *) = (void *)0x0055ce60;
+	void (__cdecl *RwGetRenderState)(int, int *) = (void *)0x0055ce60;
 	void (__cdecl *RwSetRenderState)(int, int) = (void *)0x0055ce10;
 	void (__cdecl *SetCurrentTexture)(int **) = (void *)0x004f4320;
 	void (__cdecl *SomeLightingStuff)(int, int) = (void *)0x0052fae0;
@@ -120,35 +122,116 @@ void __cdecl fixedDrawWorldAgain(int16_t param_1, int param_2) {
 	int *mesh;	// unknown struct
   
 	uVar1 = *rwObj;
+	int unkRenderstate;
+	RwGetRenderState(8, &unkRenderstate);
 	SomeLightingStuff(0,0);
 	*lastVertexBuffer = 0xffffffff;
 	*currentTexture = -1;
-	RwSetRenderState(0x14,2);
-	i = 0;
-	if (0 < *numMeshes) {
-		mesh = meshList;
-		texture = *currentTexture;
-		while (i < *numMeshes) {
-			if ((mesh[2] != 0) && ((*(uint16_t *)(*mesh + 0x1a) & param_1) == 0)) {
-				if (texture != *mesh) {
-					SetCurrentTexture(mesh);
-					if ((*(uint8_t *)(*mesh + 0x1a) & 0x40)) {
-						RwSetRenderState(0x14,2);
-					} else {
-						RwSetRenderState(0x14,1);
+	if (param_2) {
+		RwSetRenderState(0x14,1);
+		i = 0;
+		if (0 < *numMeshes) {
+			mesh = meshList;
+			texture = *currentTexture;
+			while (i < *numMeshes) {
+				if ((mesh[2] != 0) && ((*(uint16_t *)(*mesh + 0x1a) & param_1) == param_2)) {
+					if (texture != *mesh) {
+						SetCurrentTexture(mesh);
+						if ((*(uint8_t *)(*mesh + 0x1a) & 0x40)) {	// if surface is marked as double sided
+							//RwSetRenderState(0x14,2);	// draw single sided
+						} else {
+							//RwSetRenderState(0x14,1);	// draw double sided
+						}
+						if ((*(uint8_t *)(*mesh + 0x1a) & 0x10)) {
+							if (unkRenderstate && param_2) {
+								RwSetRenderState(0x8,1);
+								param_2 = 0;
+							}
+						} else {
+							RwSetRenderState(0x8,0);
+							param_2 = 1;
+						}
 					}
+					DrawWorldMesh(*rwObj, mesh[3]);
+					texture = mesh[0];
+					*currentTexture = texture;
 				}
-				DrawWorldMesh(*rwObj, mesh[3]);
-				texture = mesh[0];
-				*currentTexture = texture;
+				i = i + 1;
+				mesh = mesh + 5;
 			}
-			i = i + 1;
-			mesh = mesh + 5;
 		}
+		RwSetRenderState(0x14,2);
+		RwSetRenderState(0x8,1);
+		
+	} else {
+		RwSetRenderState(0x14,2);
+		i = 0;
+		if (0 < *numMeshes) {
+			mesh = meshList;
+			texture = *currentTexture;
+			while (i < *numMeshes) {
+				if ((mesh[2] != 0) && ((*(uint16_t *)(*mesh + 0x1a) & param_1) == 0)) {
+					int materialSingleSided = 0;
+					if (texture != *mesh) {
+						SetCurrentTexture(mesh);
+						if ((*(uint8_t *)(*mesh + 0x1a) & 0x40)) {	// if surface is marked as single sided
+							RwSetRenderState(0x14,2);	// draw single sided
+							materialSingleSided = 1;
+						} else {
+							RwSetRenderState(0x14,1);	// draw double sided
+						}
+					}
+					DrawWorldMesh(*rwObj, mesh[3]);
+					texture = mesh[0];
+					*currentTexture = texture;
+				}
+				i = i + 1;
+				mesh = mesh + 5;
+			}
+		}
+		RwSetRenderState(0x14,2);
+		RwSetRenderState(0x8,1);
 	}
-	RwSetRenderState(0x14,2);
-	RwSetRenderState(8,1);
 	return;
+}
+
+struct rw3DVertex {
+	float position[3];
+	float normal[3];
+	uint32_t color;
+	float u;
+	float v;
+};
+
+void transparentizeShadow(struct rw3DVertex *verts, uint32_t numVerts, void *matrix, uint32_t flags) {
+	void (__cdecl *RwIm3DTransform)(struct rw3DVertex *, uint32_t, void *, uint32_t) = (void *)0x00561010;
+	void (__cdecl *RwGetRenderState)(int, int *) = (void *)0x0055ce60;
+	void (__cdecl *RwSetRenderState)(int, int) = (void *)0x0055ce10;
+
+	//printf("DRAWING SHADOW START\n");
+
+	for (int i = 0; i < numVerts; i++) {
+		//printf("Vertex: POS: %f %f %f NORM: %f %f %f COLOR: 0x%08x UV: %f %f\n", verts[i].vertex[0], verts[i].vertex[1], verts[i].vertex[2], verts[i].normal[0], verts[i].normal[1], verts[i].normal[2], verts[i].color, verts[i].u, verts[i].v);
+		verts[i].color = 0x60ffffff;
+	}
+
+	//printf("DRAWING SHADOW END\n");
+	//printf("Drawing shadow!\n");
+
+	// get original blend states
+	int src, dst;
+
+	RwGetRenderState(0x0a, &src);	// 0x0a - src function
+	RwGetRenderState(0x0b, &dst);	// 0x0b - dst function
+
+	// set new states
+	RwSetRenderState(0x0a, 0x03);	// src color
+	RwSetRenderState(0x0b, 0x09);	// dst color
+	
+	RwIm3DTransform(verts, numVerts, matrix, flags);
+
+	RwSetRenderState(0x0a, src);
+	RwSetRenderState(0x0b, dst);
 }
 
 void patchCullModeFix() {
@@ -175,8 +258,138 @@ void patchCullModeFix() {
 	patchByte(0x004f9d95+1, 0x01);
 
 	patchCall(0x004f9ba2, fixedDrawWorldAgain);
+	//patchCall(0x004f9bff, fixedDrawWorldAgain);
 	patchCall(0x0042db88, fixedDrawWorldAgain);
+
+	patchCall(0x005020a5, transparentizeShadow);
 }
+
+uint8_t compLevels[] = {
+	0,
+	0,
+	0,
+	1,
+	0,
+	0,
+	1,
+	0,
+	1,
+	0,
+};
+
+int oldLevel = 0;
+int oldProgress = 0;
+
+void retryHook() {
+	int (__cdecl *IsCareerMode)(void) = (void *)0x00421540;
+	if (IsCareerMode()) {
+		// reset career progress
+		uint32_t *career = 0x008e1e90;
+		career = (*career) + 0x134;
+		career = (*career) + 0x14;
+
+		uint32_t *level = (*career) + 0x690;
+		
+		if (!compLevels[*level]) {
+			uint32_t *goals = (*career + 0x564 + ((*level - 1) * 8));
+
+			if (*level != oldLevel) {
+				oldLevel = *level;
+				oldProgress = *goals;
+			}
+
+			if (*goals & oldProgress != *goals) {
+				oldProgress = *goals | oldProgress;
+			}
+
+			*goals = 0;
+		}
+	}
+
+	callFunc(0x00422400);	// call retry
+}
+
+void loadRequestedLevelHook() {
+	int (__cdecl *IsCareerMode)(void) = (void *)0x00421540;
+
+	if (oldLevel != 0 && !compLevels[oldLevel]) {
+		// restore career progress
+
+		uint32_t *career = 0x008e1e90;
+		career = (*career) + 0x134;
+		career = (*career) + 0x14;
+
+		uint32_t *goals = (*career + 0x564 + ((oldLevel - 1) * 8));
+
+		*goals = *goals | oldProgress;
+	}
+
+	callFunc(0x004220c0);
+}
+
+void endRunHook() {
+	int (__cdecl *IsCareerMode)(void) = (void *)0x00421540;
+
+	if (IsCareerMode() && !compLevels[oldLevel]) {
+		// restore career progress
+
+		uint32_t *career = 0x008e1e90;
+		career = (*career) + 0x134;
+		career = (*career) + 0x14;
+
+		uint32_t *goals = (*career + 0x564 + ((oldLevel - 1) * 8));
+
+		*goals = *goals | oldProgress;
+	}
+
+	callFunc(0x004216f0);	// call end run
+}
+
+void patchILMode() {
+	patchDWord(0x005b801c, retryHook);
+	//patchDWord(0x005b7f8c, endRunHook);
+	patchDWord(0x005b7ffc, loadRequestedLevelHook);
+}
+
+void patchTrickLimit() {
+	patchByte(0x004355ad, 0xeb);
+}
+
+void our_random(int out_of) {
+	// first, call the original random so that we consume a value.  
+	// juuust in case someone wants actual 100% identical behavior between partymod and the original game
+	void (__cdecl *their_random)(int) = (void *)0x0040e4c0;
+
+	their_random(out_of);
+
+	return rand() % out_of;
+}
+
+void patchRandomMusic() {
+	patchCall(0x004c6b37, our_random);
+}
+
+char domainStr[256];
+char peerchatStr[266];
+char masterServerStr[264];
+
+void patchOnlineService(char *configFile) {
+	GetPrivateProfileString("Miscellaneous", "OnlineDomain", "openspy.net", domainStr, 256, configFile);
+
+	sprintf(peerchatStr, "peerchat.%s", domainStr);
+	sprintf(masterServerStr, "master.%s", domainStr);
+
+	patchDWord(0x0050b278 + 1, peerchatStr);
+	patchDWord(0x00517845 + 1, masterServerStr);
+	patchDWord(0x0051785d + 1, masterServerStr);
+	patchDWord(0x0051959a + 1, masterServerStr);
+
+	printf("Patched online server: %s\n", domainStr);
+}
+
+uint32_t rng_seed = 0;
+int ILMode;
+int disableTrickLimit;
 
 void initPatch() {
 	GetModuleFileName(NULL, &executableDirectory, filePathBufLen);
@@ -200,7 +413,7 @@ void initPatch() {
 		freopen_s(&fDummy, "CONOUT$", "w", stderr);
 		freopen_s(&fDummy, "CONOUT$", "w", stdout);
 	}
-	printf("PARTYMOD for THPS3 %d.%d\n", VERSION_NUMBER_MAJOR, VERSION_NUMBER_MINOR);
+	printf("PARTYMOD for THPS3 %d.%d.%d\n", VERSION_NUMBER_MAJOR, VERSION_NUMBER_MINOR, VERSION_NUMBER_PATCH);
 
 	printf("DIRECTORY: %s\n", executableDirectory);
 
@@ -214,7 +427,51 @@ void initPatch() {
 		patchNoMovie();
 	}
 
+	ILMode = getIniBool("Miscellaneous", "ILMode", 0, configFile);
+	if (ILMode) {
+		printf("Enabling IL Mode\n");
+		patchILMode();
+	}
+
+	disableTrickLimit = getIniBool("Miscellaneous", "NoTrickLimit", 0, configFile);
+	if (disableTrickLimit) {
+		printf("Disabling trick limit\n");
+		patchTrickLimit();
+	}
+
+	patchOnlineService(configFile);
+
+	// get some source of entropy for the music randomizer
+	rng_seed = time(NULL) & 0xffffffff;
+	srand(rng_seed);
+
 	printf("Patch Initialized\n");
+}
+
+int getVersionNumberHook(void *param) {
+	void (__fastcall *unk_func1)(void *, void *, void *, void *) = (void *)0x00429dc0;
+	double (__cdecl *inner_get_version)(uint32_t) = (void *)0x00411e20;
+	void (__cdecl *inner_set_version)(void *, char *) = (void *)0x004ce940;
+
+	char buffer[256];
+
+	void *unkp;
+	char *idstr = 0x005b6220;
+	//printf("%s\n", idstr);
+	unk_func1(param, NULL, 0x005b6220, &unkp);
+
+	if (ILMode) {
+		sprintf(buffer, " %d.%d.%d - IL MODE ACTIVE", VERSION_NUMBER_MAJOR, VERSION_NUMBER_MINOR, VERSION_NUMBER_PATCH);
+	} else {
+		sprintf(buffer, " %d.%d.%d", VERSION_NUMBER_MAJOR, VERSION_NUMBER_MINOR, VERSION_NUMBER_PATCH);
+	}
+
+	inner_set_version(unkp, buffer);
+	return 1;
+}
+
+void patchVersionNumber() {
+	patchDWord(0x005b83d4, getVersionNumberHook);
 }
 
 void patchNoLauncher() {
@@ -253,6 +510,8 @@ __declspec(dllexport) BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, L
 			patchInput();
 			patchLoadConfig();
 			patchScriptHook();
+			patchRandomMusic();
+			patchVersionNumber();
 
 			break;
 

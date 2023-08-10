@@ -112,6 +112,7 @@ struct controllerbinds padbinds;
 
 uint8_t isCursorActive = 1;
 uint8_t isUsingKeyboard = 1;
+uint8_t isUsingHardCodeControls = 1;
 
 void setUsingKeyboard(uint8_t usingKeyboard) {
 	isUsingKeyboard = usingKeyboard;
@@ -256,12 +257,8 @@ void pollController(device *dev, SDL_GameController *controller) {
 			dev->controlData[2] |= 0x01 << 0;
 		}
 		if (getButton(controller, padbinds.cameraSwivelLock)) {
-			dev->controlData[2] |= 0x01 << 1;
+			dev->controlData[2] |= 0x01 << 2;
 		}
-		// unused - right stick
-		//if (SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_RIGHTSTICK)) {
-		//	dev->controlData[2] |= 0x01 << 2;
-		//}
 
 		if (getButton(controller, padbinds.grind)) {
 			dev->controlData[3] |= 0x01 << 4;
@@ -357,14 +354,11 @@ void pollKeyboard(device *dev) {
 	uint8_t *keyboardState = SDL_GetKeyboardState(NULL);
 
 	// buttons
-	if (keyboardState[keybinds.menu]) {
+	if (keyboardState[keybinds.menu] && keybinds.menu != SDL_SCANCODE_ESCAPE) {	// is esc is bound to menu, it will only interfere with hardcoded keybinds.  similar effect on enter but i can't detect the things needed to work there
 		dev->controlData[2] |= 0x01 << 3;
 	}
 	if (keyboardState[keybinds.cameraToggle]) {
 		dev->controlData[2] |= 0x01 << 0;
-	}
-	if (0) {	// no control for left stick on keyboard
-		dev->controlData[2] |= 0x01 << 1;
 	}
 	if (keyboardState[keybinds.cameraSwivelLock]) {
 		dev->controlData[2] |= 0x01 << 2;
@@ -406,19 +400,19 @@ void pollKeyboard(device *dev) {
 	}
 		
 	// d-pad
-	if (keyboardState[keybinds.up]) {
+	if (keyboardState[keybinds.up] || (isUsingHardCodeControls && keyboardState[SDL_SCANCODE_UP])) {
 		dev->controlData[2] |= 0x01 << 4;
 		dev->controlData[10] = 0xFF;
 	}
-	if (keyboardState[keybinds.right]) {
+	if (keyboardState[keybinds.right] || (isUsingHardCodeControls && keyboardState[SDL_SCANCODE_RIGHT])) {
 		dev->controlData[2] |= 0x01 << 5;
 		dev->controlData[8] = 0xFF;
 	}
-	if (keyboardState[keybinds.down]) {
+	if (keyboardState[keybinds.down] || (isUsingHardCodeControls && keyboardState[SDL_SCANCODE_DOWN])) {
 		dev->controlData[2] |= 0x01 << 6;
 		dev->controlData[11] = 0xFF;
 	}
-	if (keyboardState[keybinds.left]) {
+	if (keyboardState[keybinds.left] || (isUsingHardCodeControls && keyboardState[SDL_SCANCODE_LEFT])) {
 		dev->controlData[2] |= 0x01 << 7;
 		dev->controlData[9] = 0xFF;
 	}
@@ -657,7 +651,7 @@ void __cdecl initManager(manager* manager, HINSTANCE hinstance, HWND hwnd) {
 		
 	}
 
-	loadKeyBinds(&keybinds);
+	loadKeyBinds(&keybinds, &isUsingHardCodeControls);
 	loadControllerBinds(&padbinds);
 
 	newDevice(manager, 0);

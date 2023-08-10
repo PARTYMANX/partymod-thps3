@@ -195,7 +195,7 @@ void loadSettings() {
 #define KEYBIND_SECTION "Keybinds"
 #define CONTROLLER_SECTION "Gamepad"
 
-void loadKeyBinds(struct keybinds *bindsOut) {
+void loadKeyBinds(struct keybinds *bindsOut, uint8_t *usingHardCodedControls) {
 	char configFile[1024];
 	sprintf(configFile, "%s%s", executableDirectory, CONFIG_FILE_NAME);
 
@@ -223,6 +223,10 @@ void loadKeyBinds(struct keybinds *bindsOut) {
 		bindsOut->cameraLeft = GetPrivateProfileInt(KEYBIND_SECTION, "CameraLeft", SDL_SCANCODE_J, configFile);
 		bindsOut->cameraUp = GetPrivateProfileInt(KEYBIND_SECTION, "CameraUp", SDL_SCANCODE_I, configFile);
 		bindsOut->cameraDown = GetPrivateProfileInt(KEYBIND_SECTION, "CameraDown", SDL_SCANCODE_K, configFile);
+	}
+
+	if (usingHardCodedControls) {
+		*usingHardCodedControls = getIniBool("Miscellaneous", "UseHardCodedControls", 1, configFile);
 	}
 }
 

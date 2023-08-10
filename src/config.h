@@ -90,7 +90,7 @@ struct controllerbinds {
 };
 
 void loadControllerBinds(struct controllerbinds *bindsOut);
-void loadKeyBinds(struct keybinds *bindsOut);
+void loadKeyBinds(struct keybinds *bindsOut, uint8_t *usingHardCodedControls);
 int getIniBool(char *section, char *key, int def, char *file);
 
 void patchLoadConfig();
