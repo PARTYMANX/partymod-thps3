@@ -1,4 +1,4 @@
-PARTYMOD 1.0
+PARTYMOD 1.1.0
 
 This is a patch for THPS3 1.01 to improve its input handling as well as smooth out a few other parts of the PC port.
 The patch is designed to keep the game as original as possible, and leave its files unmodified.
@@ -14,6 +14,11 @@ Features and Fixes:
 - Custom configurator program to handle new configuration files
 - Fixed ledge warp bugs where the skater is teleported down farther than intended
 - Fixed visually missing geometry in various areas (notably, the airport entrance and destructable wall in Skater Island)
+- Fixes music randomization having the same sequence between sessions
+- Fixes the skater's shadow not appearing transparent
+- Connects to alternative online services (defaults to OpenSpy)
+- Optionally adds a single level practice mode for speedrunning
+- Optionally removes the trick cap for combo multipliers
 
 INSTALLATION:
 1. Make sure THPS3 (English) is installed and the 1.01 patch is applied, remove the widescreen mod if it is installed (delete dinput8.dll)

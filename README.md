@@ -13,6 +13,10 @@ The patch is designed to keep the game as original as possible, and leave its fi
 * Custom configurator program to handle new configuration files
 * Fixed ledge warp bugs where the skater is teleported down farther than intended
 * Fixed visually missing geometry in various areas (notably, the airport entrance and destructable wall in Skater Island)
+* Fixes the skater's shadow not appearing transparent
+* Connects to alternative online services (defaults to OpenSpy)
+* Optionally adds a single level practice mode for speedrunning
+* Optionally removes the trick cap for combo multipliers
 
 ### Installation
 1. Download PARTYMOD from the releases tab

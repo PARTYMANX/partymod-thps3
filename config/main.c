@@ -3,25 +3,795 @@
 #include <Windows.h>
 #include <windowsx.h>
 #include <CommCtrl.h>
+#include <uxtheme.h>
 
 #include <SDL2/SDL.h>
 
 // configuration application for PARTYMOD
-// sorry this code is so ugly, i made some early missteps and have discovered only a week in that microsoft's abysmal documentation 
-// doesn't tell you the million pitfalls in the literal namesake of the operating system thus i had no motivation to fix it
-// sorry the program is ugly too.  same deal.
-// anyway, if you'd like to fix it, be my guest!
+
+// gui library
+// this could probably be moved to a different file but i'm too lazy lol
 
 #pragma comment(linker,"\"/manifestdependency:type='win32' \
 name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
 processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 
-#define CONFIG_FILE_NAME "partymod.ini"
+struct pgui_control;
 
-HWND windowHwnd;
+typedef void (*control_callback)(struct pgui_control *, void *);
+typedef void (*control_value_callback)(struct pgui_control *, int, void *);
+//typedef void (*control_string_callback)(char *, void *);
+
+typedef enum {
+	PGUI_CONTROL_TYPE_WINDOW,
+	PGUI_CONTROL_TYPE_EMPTY,
+	PGUI_CONTROL_TYPE_BUTTON,
+	PGUI_CONTROL_TYPE_CHECKBOX,
+	PGUI_CONTROL_TYPE_COMBOBOX,
+	PGUI_CONTROL_TYPE_GROUPBOX,
+	PGUI_CONTROL_TYPE_TABS,
+	PGUI_CONTROL_TYPE_TEXTBOX,
+	PGUI_CONTROL_TYPE_LABEL,
+} pgui_controltype;
+
+typedef enum {
+	PGUI_LABEL_JUSTIFY_LEFT,
+	PGUI_LABEL_JUSTIFY_CENTER,
+} pgui_label_justify;
+
+typedef struct {
+	int current_id;
+} pgui_control_window;
+
+typedef struct {
+	control_callback onPressed;
+	void *onPressedData;
+} pgui_control_button;
+
+typedef struct {
+	control_value_callback on_toggle;
+	void *on_toggle_data;
+} pgui_control_checkbox;
+
+typedef struct {
+	control_value_callback on_select;
+	void *on_select_data;
+} pgui_control_combobox;
+
+typedef struct {
+	int num_tabs;
+	int current_tab;
+	HBRUSH brush;	// used for drawing; brush with the tab's visuals
+} pgui_control_tabs;
+
+typedef struct {
+	control_callback on_focus_lost;
+	void *on_focus_lost_data;
+	control_callback on_focus_gained;
+	void *on_focus_gained_data;
+} pgui_control_textbox;
+
+typedef struct pgui_control {
+	pgui_controltype type;
+	int id;
+	HWND hwnd;
+	size_t num_children;
+	size_t children_size;
+
+	int x;
+	int y;
+	int w;
+	int h;
+
+	int hidden;
+
+	struct pgui_control **children;
+	struct pgui_control *parent;
+	union {
+		pgui_control_window window;
+		pgui_control_button button;
+		pgui_control_checkbox checkbox;
+		pgui_control_combobox combobox;
+		pgui_control_tabs tabs;
+		pgui_control_textbox textbox;
+	};
+} pgui_control;
+
+int pgui_initialized = 0;
+size_t num_windows = 0;
+size_t window_list_size = 0;
+pgui_control **window_list = NULL;
+
+HINSTANCE hinst;
 HFONT hfont;
-int cxMargin;
-int cyMargin;
+
+LRESULT pgui_control_wndproc(pgui_control *control, HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+
+void pgui_add_child(pgui_control *parent, pgui_control *child) {
+	if (!parent->children) {
+		parent->children = malloc(sizeof(pgui_control *));
+
+		parent->children_size = 1;
+	} else if (parent->children_size <= parent->num_children) {
+		parent->children = realloc(parent->children, sizeof(pgui_control *) * (parent->children_size + 1));
+
+		parent->children_size += 1;
+	}
+
+	parent->children[parent->num_children] = child;
+
+	parent->num_children++;
+}
+
+void pgui_control_hide(pgui_control *control, int hidden) {
+	if (!hidden || !control->hidden) {
+		ShowWindow(control->hwnd, !hidden);
+	} else {
+		ShowWindow(control->hwnd, 0);
+	}
+
+	for (int i = 0; i < control->num_children; i++) {
+		pgui_control_hide(control->children[i], hidden);
+	}
+}
+
+void pgui_control_set_hidden(pgui_control *control, int hidden) {
+	control->hidden = hidden;
+
+	pgui_control_hide(control, hidden);
+}
+
+void pgui_get_hierarchy_position(pgui_control *control, int *x, int *y) {
+	if (control->parent) {
+		*x += control->parent->x;
+		*y += control->parent->y;
+		pgui_get_hierarchy_position(control->parent, x, y);
+	}
+}
+
+pgui_control *pgui_create_control(int x, int y, int w, int h, pgui_control *parent) {
+	pgui_control *result = malloc(sizeof(pgui_control));
+	result->num_children = 0;
+	result->children = NULL;
+	result->parent = parent;
+
+	pgui_add_child(parent, result);
+
+	result->x = x;
+	result->y = y;
+	result->w = w;
+	result->h = h;
+
+	return result;
+}
+
+pgui_control *findControl(pgui_control *control, HWND target) {
+	if (control->hwnd == target) {
+		return control;
+	} else if (control->num_children == 0) {
+		return NULL;
+	}
+
+	for (int i = 0; i < control->num_children; i++) {
+		pgui_control *result = findControl(control->children[i], target);
+		if (result) {
+			return result;
+		}
+	}
+
+	return NULL;
+}
+
+LRESULT CALLBACK pgui_wndproc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+
+	// find hwnd in window list
+	pgui_control *self = NULL;
+
+	for (int i = 0; i < num_windows; i++) {
+		//printf("hwnd in = 0x%08x, checking 0x%08x\n", hwnd, window_list[i].hwnd);
+		if (window_list[i]->hwnd == hwnd) {
+			//printf("window found!");
+			self = window_list[i];
+			break;
+		}
+	}
+	
+	switch (uMsg) {
+		case WM_DESTROY: {
+			PostQuitMessage(0);
+			return 0;
+		}
+		case WM_PAINT: {
+			PAINTSTRUCT ps;
+			HDC hdc = BeginPaint(hwnd, &ps);
+
+			// All painting occurs here, between BeginPaint and EndPaint.
+
+			FillRect(hdc, &ps.rcPaint, (HBRUSH) (COLOR_WINDOW));
+
+			EndPaint(hwnd, &ps);
+
+			return 0;
+		}
+		case WM_CTLCOLOR:
+		case WM_CTLCOLORBTN:
+		case WM_CTLCOLORSTATIC: {
+			if (self) {
+				// find this control
+				pgui_control *child_control = findControl(self, (HWND)lParam);
+				
+				if (child_control) {
+					// find parent tab if it exists
+					pgui_control *parent_tab = child_control->parent;
+					while (parent_tab && parent_tab->type != PGUI_CONTROL_TYPE_TABS) {
+						parent_tab = parent_tab->parent;
+					}
+
+					if (parent_tab) {
+						// create a brush that copies the tab's body 
+						if (!parent_tab->tabs.brush) {
+							RECT rc;
+
+							GetWindowRect(parent_tab->hwnd, &rc);
+							HDC hdc = GetDC(parent_tab->hwnd);
+							HDC hdc_new = CreateCompatibleDC(hdc);	// create a new device context to draw our tab into
+							HBITMAP hbmp = CreateCompatibleBitmap(hdc, rc.right - rc.left, rc.bottom - rc.top);	// create a new bitmap to draw the tab into
+							HBITMAP hbmp_old = (HBITMAP)(SelectObject(hdc_new, hbmp));	// replace the device context's bitmap with our new bitmap
+
+							SendMessage(parent_tab->hwnd, WM_PRINTCLIENT, hdc_new, (LPARAM)(PRF_ERASEBKGND | PRF_CLIENT | PRF_NONCLIENT));	// draw the tab into our bitmap
+							parent_tab->tabs.brush = CreatePatternBrush(hbmp);	// create a brush from the bitmap
+							SelectObject(hdc_new, hbmp_old);	// replace the bitmap in the device context
+
+							DeleteObject(hbmp);
+							DeleteDC(hdc_new);
+							ReleaseDC(parent_tab->hwnd, hdc);
+						}
+
+						// use our previously created brush as a background for the control
+						RECT rc2;
+
+						HDC hEdit = (HDC)wParam;
+						SetBkMode(hEdit, TRANSPARENT);
+
+						GetWindowRect((HWND)lParam, &rc2);	// get control's position
+						MapWindowPoints(NULL, parent_tab->hwnd, (LPPOINT)(&rc2), 2);	// convert coordinates into tab's space
+						SetBrushOrgEx(hEdit, -rc2.left, -rc2.top, NULL);	// set brush origin to our control's position
+
+						return parent_tab->tabs.brush;
+					}
+				}
+			}
+		}
+	}
+
+	if (self) {
+		pgui_control_wndproc(self, hwnd, uMsg, wParam, lParam);
+	}
+
+	return DefWindowProc(hwnd, uMsg, wParam, lParam);
+}
+
+pgui_control *pgui_window_create(int width, int height, char *title) {	// TODO: window styling
+	pgui_control *result = malloc(sizeof(pgui_control));
+	result->type = PGUI_CONTROL_TYPE_WINDOW;
+	result->id = 0;
+	result->num_children = 0;
+	result->children = NULL;
+	result->parent = NULL;
+	result->window.current_id = 0x8800;
+	result->x = 0;
+	result->y = 0;
+	result->w = width;
+	result->h = height;
+
+	HINSTANCE hinst = GetModuleHandle(NULL);
+
+	const wchar_t CLASS_NAME[]  = L"PGUI Window Class";
+
+	if (!pgui_initialized) {
+		INITCOMMONCONTROLSEX icex;
+		icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
+		icex.dwICC = ICC_TAB_CLASSES;
+		InitCommonControlsEx(&icex);
+
+		LOGFONT lf;
+		GetObject (GetStockObject(DEFAULT_GUI_FONT), sizeof(LOGFONT), &lf); 
+		hfont = CreateFont (lf.lfHeight, lf.lfWidth, 
+			lf.lfEscapement, lf.lfOrientation, lf.lfWeight, 
+			lf.lfItalic, lf.lfUnderline, lf.lfStrikeOut, lf.lfCharSet, 
+			lf.lfOutPrecision, lf.lfClipPrecision, lf.lfQuality, 
+			lf.lfPitchAndFamily, lf.lfFaceName); 
+
+		WNDCLASS wc = { 0,
+			pgui_wndproc,
+			0,
+			0,
+			hinst,
+			NULL,
+			NULL,
+			NULL,
+			NULL,
+			CLASS_NAME
+		};
+
+		RegisterClass(&wc);
+	}
+
+	result->hwnd = CreateWindow(CLASS_NAME, title, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, width, height, NULL, NULL, hinst, NULL);
+	SendMessage(result->hwnd, WM_SETFONT, (WPARAM)hfont, TRUE);
+
+	  RECT rc_client, rc_window;
+	  POINT pt_diff;
+	  GetClientRect(result->hwnd, &rc_client);
+	  GetWindowRect(result->hwnd, &rc_window);
+	  pt_diff.x = (rc_window.right - rc_window.left) - rc_client.right;
+	  pt_diff.y = (rc_window.bottom - rc_window.top) - rc_client.bottom;
+	  MoveWindow(result->hwnd, rc_window.left, rc_window.top, width + pt_diff.x, height + pt_diff.y, TRUE);
+
+	// todo: add window to window list, return window
+	if (!window_list) {
+		window_list = malloc(sizeof(pgui_control *));
+
+		window_list_size = 1;
+	} else if (window_list_size == num_windows) {
+		window_list = realloc(window_list, sizeof(pgui_control *) * (window_list_size + 1));
+
+		window_list_size += 1;
+	}
+
+	window_list[num_windows] = result;
+	num_windows += 1;
+
+	return result;
+}
+
+void pgui_window_show(pgui_control *control) {
+	ShowWindow(control->hwnd, SW_NORMAL);
+}
+
+pgui_control *pgui_empty_create(int x, int y, int w, int h, pgui_control *parent) {	// TODO: window styling
+	pgui_control *result = pgui_create_control(x, y, w, h, parent);
+	result->type = PGUI_CONTROL_TYPE_EMPTY;
+
+	pgui_get_hierarchy_position(result, &x, &y);
+
+	// get window hwnd
+	pgui_control *node = parent;
+	while (node->parent) {
+		node = node->parent;
+	}
+
+	result->id = 0;
+
+	result->hwnd = NULL;
+
+	// reorder parent(s) probably?  need to remember how win32 orders things
+
+	return result;
+}
+
+LRESULT pgui_button_wndproc(pgui_control *control, HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+	switch (uMsg) {
+		case WM_COMMAND: {
+			//printf("COMMAND CHILD!!! LO: %d, HI: %d, L: %d\n", LOWORD(wParam), HIWORD(wParam), lParam);
+			int controlId = LOWORD(wParam);
+
+			if (controlId == control->id && control->button.onPressed) {
+				control->button.onPressed(control, control->button.onPressedData);	// maybe pass in self?
+			}
+
+			return 0;
+		}
+	}
+}
+
+pgui_control *pgui_button_create(int x, int y, int w, int h, char *label, pgui_control *parent) {	// TODO: window styling
+	pgui_control *result = pgui_create_control(x, y, w, h, parent);
+	result->type = PGUI_CONTROL_TYPE_BUTTON;
+
+	result->button.onPressed = NULL;
+	result->button.onPressedData = NULL;
+
+	pgui_get_hierarchy_position(result, &x, &y);
+
+	// get window hwnd
+	pgui_control *node = parent;
+	while (node->parent) {
+		node = node->parent;
+	}
+
+	result->id = node->window.current_id;
+
+	result->hwnd = CreateWindow(WC_BUTTON, label, WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, x, y, w, h, node->hwnd, node->window.current_id, hinst, NULL);
+	SendMessage(result->hwnd, WM_SETFONT, (WPARAM)hfont, TRUE);
+
+	// reorder parent(s) probably?  need to remember how win32 orders things
+
+	node->window.current_id += 1;
+
+	return result;
+}
+
+void pgui_button_set_on_press(pgui_control *control, control_callback on_pressed, void *data) {
+	control->button.onPressed = on_pressed;
+	control->button.onPressedData = data;
+}
+
+void pgui_button_set_enabled(pgui_control *control, int enabled) {
+	Button_Enable(control->hwnd, enabled);
+}
+
+LRESULT pgui_checkbox_wndproc(pgui_control *control, HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+	switch (uMsg) {
+		case WM_COMMAND: {
+			//printf("COMMAND CHILD!!! LO: %d, HI: %d, L: %d\n", LOWORD(wParam), HIWORD(wParam), lParam);
+			int controlId = LOWORD(wParam);
+
+			if (controlId == control->id) {
+				int checkstate = SendMessage(control->hwnd, BM_GETCHECK, 0, 0) == BST_CHECKED;
+
+				if (checkstate) {
+					SendMessage(control->hwnd, BM_SETCHECK, BST_UNCHECKED, 0);
+				} else {
+					SendMessage(control->hwnd, BM_SETCHECK, BST_CHECKED, 0);
+				}
+
+				if (control->checkbox.on_toggle) {
+					control->checkbox.on_toggle(control, !checkstate, control->checkbox.on_toggle_data);	// maybe pass in self?
+				}
+			}
+
+			return 0;
+		}
+	}
+}
+
+pgui_control *pgui_checkbox_create(int x, int y, int w, int h, char *label, pgui_control *parent) {	// TODO: window styling
+	pgui_control *result = pgui_create_control(x, y, w, h, parent);
+	result->type = PGUI_CONTROL_TYPE_CHECKBOX;
+
+	result->checkbox.on_toggle = NULL;
+	result->checkbox.on_toggle_data = NULL;
+
+	pgui_get_hierarchy_position(result, &x, &y);
+
+	// get window hwnd
+	pgui_control *node = parent;
+	while (node->parent) {
+		node = node->parent;
+	}
+
+	result->id = node->window.current_id;
+
+	result->hwnd = CreateWindow(WC_BUTTON, label, WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_CHECKBOX, x, y, w, h, node->hwnd, node->window.current_id, hinst, NULL);
+	SendMessage(result->hwnd, WM_SETFONT, (WPARAM)hfont, TRUE);
+
+	// reorder parent(s) probably?  need to remember how win32 orders things
+
+	node->window.current_id += 1;
+
+	return result;
+}
+
+void pgui_checkbox_set_on_toggle(pgui_control *control, control_value_callback on_toggle, void *data) {
+	control->checkbox.on_toggle = on_toggle;
+	control->checkbox.on_toggle_data = data;
+}
+
+void pgui_checkbox_set_checked(pgui_control *control, int checked) {
+	if (!checked) {
+		SendMessage(control->hwnd, BM_SETCHECK, BST_UNCHECKED, 0);
+	} else {
+		SendMessage(control->hwnd, BM_SETCHECK, BST_CHECKED, 0);
+	}
+}
+
+void pgui_checkbox_set_enabled(pgui_control *control, int enabled) {
+	Button_Enable(control->hwnd, enabled);
+}
+
+pgui_control *pgui_label_create(int x, int y, int w, int h, char *label, pgui_label_justify justify, pgui_control *parent) {	// todo: positioning (center, left, etc)
+	pgui_control *result = pgui_create_control(x, y, w, h, parent);
+	result->type = PGUI_CONTROL_TYPE_LABEL;
+
+	pgui_get_hierarchy_position(result, &x, &y);
+
+	// get window hwnd
+	pgui_control *node = parent;
+	while (node->parent) {
+		node = node->parent;
+	}
+
+	int justify_flag = 0;
+	if (justify == PGUI_LABEL_JUSTIFY_CENTER) {
+		justify_flag = SS_CENTER;
+	}
+
+	result->hwnd = CreateWindow(WC_STATIC, label, WS_CHILD | WS_VISIBLE | justify_flag, x, y, w, h, node->hwnd, NULL, hinst, NULL);
+	SendMessage(result->hwnd, WM_SETFONT, (WPARAM)hfont, TRUE);
+
+	// reorder parent(s) probably?  need to remember how win32 orders things
+
+	return result;
+}
+
+void pgui_label_set_enabled(pgui_control *control, int enabled) {
+	Static_Enable(control->hwnd, enabled);
+}
+
+pgui_control *pgui_groupbox_create(int x, int y, int w, int h, char *label, pgui_control *parent) {	// todo: positioning (center, left, etc)
+	pgui_control *result = pgui_create_control(x, y, w, h, parent);
+	result->type = PGUI_CONTROL_TYPE_GROUPBOX;
+
+	pgui_get_hierarchy_position(result, &x, &y);
+
+	// get window hwnd
+	pgui_control *node = parent;
+	while (node->parent) {
+		node = node->parent;
+	}
+
+	result->hwnd = CreateWindow(WC_BUTTON, label, WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_GROUPBOX, x, y, w, h, node->hwnd, NULL, hinst, NULL);
+	SendMessage(result->hwnd, WM_SETFONT, (WPARAM)hfont, TRUE);
+
+	// reorder parent(s) probably?  need to remember how win32 orders things
+
+	return result;
+}
+
+pgui_control *pgui_textbox_create(int x, int y, int w, int h, char *text, pgui_control *parent) {	// todo: positioning (center, left, etc)
+	pgui_control *result = pgui_create_control(x, y, w, h, parent);
+	result->type = PGUI_CONTROL_TYPE_TEXTBOX;
+
+	result->textbox.on_focus_gained = NULL;
+	result->textbox.on_focus_gained_data = NULL;
+	result->textbox.on_focus_lost = NULL;
+	result->textbox.on_focus_lost_data = NULL;
+
+	pgui_get_hierarchy_position(result, &x, &y);
+
+	// get window hwnd
+	pgui_control *node = parent;
+	while (node->parent) {
+		node = node->parent;
+	}
+
+	result->id = node->window.current_id;
+
+	result->hwnd = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, text, WS_CHILD | WS_VISIBLE, x, y, w, h, node->hwnd, (HMENU)node->window.current_id, hinst, NULL);
+	SendMessage(result->hwnd, WM_SETFONT, (WPARAM)hfont, TRUE);
+
+	// reorder parent(s) probably?  need to remember how win32 orders things
+
+	node->window.current_id += 1;
+
+	return result;
+}
+
+void pgui_textbox_set_on_focus_gained(pgui_control *control, control_value_callback callback, void *data) {
+	control->textbox.on_focus_gained = callback;
+	control->textbox.on_focus_gained_data = data;
+}
+
+void pgui_textbox_set_on_focus_lost(pgui_control *control, control_value_callback callback, void *data) {
+	control->textbox.on_focus_lost = callback;
+	control->textbox.on_focus_lost_data = data;
+}
+
+void pgui_textbox_set_text(pgui_control *control, char *text) {
+	Edit_SetText(control->hwnd, text);
+}
+
+void pgui_textbox_get_text(pgui_control *control, char *output_buffer, size_t buffer_size) {
+	Edit_GetText(control->hwnd, output_buffer, buffer_size);
+}
+
+void pgui_textbox_set_enabled(pgui_control *control, int enabled) {
+	Edit_Enable(control->hwnd, enabled);
+}
+
+LRESULT pgui_textbox_wndproc(pgui_control *control, HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+	switch (uMsg) {
+		case WM_COMMAND: {
+			int controlId = LOWORD(wParam);
+			int controlCode = HIWORD(wParam);
+
+			if (controlId == control->id) {
+				if (controlCode == EN_SETFOCUS) {
+					if (control->textbox.on_focus_gained) {
+						control->textbox.on_focus_gained(control, control->textbox.on_focus_gained_data);
+					}
+				}
+				if (controlCode == EN_KILLFOCUS) {
+					if (control->textbox.on_focus_lost) {
+						control->textbox.on_focus_lost(control, control->textbox.on_focus_lost_data);
+					}
+				}
+			}
+
+			return 0;
+		}
+	}
+}
+
+pgui_control *pgui_combobox_create(int x, int y, int w, int h, char **options, size_t num_options, pgui_control *parent) {	// todo: positioning (center, left, etc)
+	pgui_control *result = pgui_create_control(x, y, w, h, parent);
+	result->type = PGUI_CONTROL_TYPE_COMBOBOX;
+
+	result->combobox.on_select = NULL;
+	result->combobox.on_select_data = NULL;
+
+	pgui_get_hierarchy_position(result, &x, &y);
+
+	// get window hwnd
+	pgui_control *node = parent;
+	while (node->parent) {
+		node = node->parent;
+	}
+
+	result->id = node->window.current_id;
+
+	result->hwnd = CreateWindow(WC_COMBOBOX, "", WS_TABSTOP | WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST, x, y, w, h, node->hwnd, node->window.current_id, hinst, NULL);
+	SendMessage(result->hwnd, WM_SETFONT, (WPARAM)hfont, TRUE);
+
+	for (int i = 0; i < num_options; i++) {
+		ComboBox_AddString(result->hwnd, options[i]);
+	}
+
+	ComboBox_SetCurSel(result->hwnd, 0);
+
+	// reorder parent(s) probably?  need to remember how win32 orders things
+
+	node->window.current_id += 1;
+
+	return result;
+}
+
+LRESULT pgui_combobox_wndproc(pgui_control *control, HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+	switch (uMsg) {
+		case WM_COMMAND: {
+			int controlId = LOWORD(wParam);
+			int controlCode = HIWORD(wParam);
+
+			if (controlId == control->id) {
+				if (controlCode == 1) {
+					int idx = ComboBox_GetCurSel(lParam);
+					if (control->combobox.on_select) {
+						control->combobox.on_select(control, idx, control->combobox.on_select_data);
+					}
+				}
+			}
+
+			return 0;
+		}
+	}
+}
+
+void pgui_combobox_set_on_select(pgui_control *control, control_value_callback on_select, void *data) {
+	control->combobox.on_select = on_select;
+	control->combobox.on_select_data = data;
+}
+
+void pgui_combobox_set_selection(pgui_control *control, int value) {
+	ComboBox_SetCurSel(control->hwnd, value);
+}
+
+int pgui_combobox_get_selection(pgui_control *control) {
+	return ComboBox_GetCurSel(control->hwnd);
+}
+
+void pgui_combobox_set_enabled(pgui_control *control, int enabled) {
+	ComboBox_Enable(control->hwnd, enabled);
+}
+
+pgui_control *pgui_tabs_create(int x, int y, int w, int h, char **options, size_t num_options, pgui_control *parent) {	// todo: positioning (center, left, etc)
+	pgui_control *result = pgui_create_control(x, y, w, h, parent);
+	result->type = PGUI_CONTROL_TYPE_TABS;
+
+	result->tabs.current_tab = 0;
+	result->tabs.num_tabs = num_options;
+	result->tabs.brush = NULL;
+
+	pgui_get_hierarchy_position(result, &x, &y);
+
+	// get window hwnd
+	pgui_control *node = parent;
+	while (node->parent) {
+		node = node->parent;
+	}
+
+	result->id = node->window.current_id;
+
+	result->hwnd = CreateWindow(WC_TABCONTROL, "", WS_CHILD | WS_VISIBLE, x, y, w, h, node->hwnd, node->window.current_id, hinst, NULL);
+	SendMessage(result->hwnd, WM_SETFONT, (WPARAM)hfont, TRUE);
+
+	for (int i = 0; i < num_options; i++) {
+		TCITEM item;
+		item.mask = TCIF_TEXT | TCIF_IMAGE;
+		item.iImage = -1;
+	
+		item.pszText = options[i];
+		TabCtrl_InsertItem(result->hwnd, i, &item);
+	}
+
+	ComboBox_SetCurSel(result->hwnd, 0);
+
+	RECT tabRect;
+	GetClientRect(result->hwnd, &tabRect);
+	TabCtrl_AdjustRect(result->hwnd, FALSE, &tabRect);
+
+	// reorder parent(s) probably?  need to remember how win32 orders things
+
+	for (int i = 0; i < num_options; i++) {
+		pgui_empty_create(tabRect.left, tabRect.top, tabRect.right - tabRect.left, tabRect.bottom - tabRect.top, result);
+	}
+
+	for (int i = 1; i < num_options; i++) {
+		pgui_control_set_hidden(result->children[i], 1);
+	}
+
+	node->window.current_id += 1;
+
+	return result;
+}
+
+LRESULT pgui_tabs_wndproc(pgui_control *control, HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+	switch (uMsg) {
+		case WM_NOTIFY: {
+			int controlCode = ((LPNMHDR)lParam)->code;
+			int controlId = ((LPNMHDR)lParam)->idFrom;
+
+			if (controlId == control->id) {
+				if (controlCode == TCN_SELCHANGE) {
+					int tab = TabCtrl_GetCurSel(((LPNMHDR)lParam)->hwndFrom);
+
+					// hide all children on current tab
+					pgui_control_set_hidden(control->children[control->tabs.current_tab], 1);
+
+					// show all children on new tab
+					pgui_control_set_hidden(control->children[tab], 0); 
+					
+					// set current tab to new tab
+					control->tabs.current_tab = tab;
+				}
+			}
+
+			return 0;
+		}
+	}
+}
+
+LRESULT pgui_control_wndproc(pgui_control *control, HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+	switch(control->type) {
+		case PGUI_CONTROL_TYPE_BUTTON:
+			pgui_button_wndproc(control, hwnd, uMsg, wParam, lParam);
+			break;
+		case PGUI_CONTROL_TYPE_CHECKBOX:
+			pgui_checkbox_wndproc(control, hwnd, uMsg, wParam, lParam);
+			break;
+		case PGUI_CONTROL_TYPE_TEXTBOX:
+			pgui_textbox_wndproc(control, hwnd, uMsg, wParam, lParam);
+			break;
+		case PGUI_CONTROL_TYPE_COMBOBOX:
+			pgui_combobox_wndproc(control, hwnd, uMsg, wParam, lParam);
+			break;
+		case PGUI_CONTROL_TYPE_TABS:
+			pgui_tabs_wndproc(control, hwnd, uMsg, wParam, lParam);
+			break;
+		default:
+			break;
+	}
+
+	for (int i = 0; i < control->num_children; i++) {
+		pgui_control_wndproc(control->children[i], hwnd, uMsg, wParam, lParam);
+	}
+
+	return 0;
+}
+
+// config program start
+
+#define CONFIG_FILE_NAME "partymod.ini"
 
 struct displayMode {
 	int width;
@@ -30,6 +800,7 @@ struct displayMode {
 
 int numDisplayModes;
 struct displayMode *displayModeList;
+char **displayModeStringList;
 
 void initResolutionList() {
 	DEVMODE deviceMode;
@@ -76,8 +847,16 @@ void initResolutionList() {
 		i++;
 	}
 
+	displayModeStringList = malloc(sizeof(char *) * (numDisplayModes + 1));
+	displayModeStringList[0] = "Default Desktop Resolution";
+
 	for (i = 0; i < numDisplayModes; i++) {
-		printf("OUTPUT DISPLAY MODE %d: %d x %d\n", i, displayModeList[i].width, displayModeList[i].height);
+		//printf("OUTPUT DISPLAY MODE %d: %d x %d\n", i, displayModeList[i].width, displayModeList[i].height);
+		char resolutionString[64];
+		sprintf(resolutionString, "%dx%d", displayModeList[i].width, displayModeList[i].height);
+
+		displayModeStringList[i + 1] = calloc(strlen(resolutionString) + 1, 1);
+		strcpy(displayModeStringList[i + 1], resolutionString);
 	}
 }
 
@@ -85,14 +864,17 @@ struct settings {
 	int resX;
 	int resY;
 	int windowed;
+	int borderless;
 
 	int shadows;
 	int particles;
-	int animatedTextures;
-	int distanceFog;
-	int lowDetail;
+	int animating_textures;
+	int distance_fog;
+	int low_detail_models;
 
-	int playIntro;
+	int play_intro;
+	int il_mode;
+	int disable_trick_limit;
 };
 
 struct keybinds {
@@ -181,6 +963,37 @@ struct settings settings;
 struct keybinds keybinds;
 struct controllerbinds padbinds;
 
+controllerButton buttonLUT[] = {
+	CONTROLLER_UNBOUND,
+	CONTROLLER_BUTTON_A,
+	CONTROLLER_BUTTON_B,
+	CONTROLLER_BUTTON_X,
+	CONTROLLER_BUTTON_Y,
+	CONTROLLER_BUTTON_DPAD_UP,
+	CONTROLLER_BUTTON_DPAD_DOWN,
+	CONTROLLER_BUTTON_DPAD_LEFT,
+	CONTROLLER_BUTTON_DPAD_RIGHT,
+	CONTROLLER_BUTTON_LEFTSHOULDER,
+	CONTROLLER_BUTTON_RIGHTSHOULDER,
+	CONTROLLER_BUTTON_LEFTTRIGGER,
+	CONTROLLER_BUTTON_RIGHTTRIGGER,
+	CONTROLLER_BUTTON_LEFTSTICK,
+	CONTROLLER_BUTTON_RIGHTSTICK,
+	CONTROLLER_BUTTON_BACK,
+	CONTROLLER_BUTTON_START,
+	CONTROLLER_BUTTON_TOUCHPAD,
+	CONTROLLER_BUTTON_PADDLE1,
+	CONTROLLER_BUTTON_PADDLE2,
+	CONTROLLER_BUTTON_PADDLE3,
+	CONTROLLER_BUTTON_PADDLE4,
+};
+
+controllerButton stickLUT[] = {
+	CONTROLLER_STICK_UNBOUND,
+	CONTROLLER_STICK_LEFT,
+	CONTROLLER_STICK_RIGHT,
+};
+
 int getIniBool(char *section, char *key, int def, char *file) {
 	int result = GetPrivateProfileInt(section, key, def, file);
 	if (result) {
@@ -205,17 +1018,20 @@ void writeIniInt(char *section, char *key, int val, char *file) {
 }
 
 void defaultSettings() {
-	settings.resX = 640;
-	settings.resY = 480;
+	settings.resX = 0;
+	settings.resY = 0;
 	settings.windowed = 0;
+	settings.borderless = 0;
 
 	settings.shadows = 1;
 	settings.particles = 1;
-	settings.animatedTextures = 1;
-	settings.distanceFog = 0;
-	settings.lowDetail = 0;
-
-	settings.playIntro = 1;
+	settings.animating_textures = 1;
+	settings.distance_fog = 0;
+	settings.low_detail_models = 0;
+	
+	settings.play_intro = 1;
+	settings.il_mode = 0;
+	settings.disable_trick_limit = 0;
 
 	keybinds.ollie = SDL_SCANCODE_KP_2;
 	keybinds.grab = SDL_SCANCODE_KP_6;
@@ -283,17 +1099,20 @@ char *getConfigFile() {
 void loadSettings() {
 	char *configFile = getConfigFile();
 
-	settings.resX = GetPrivateProfileInt("Graphics", "ResolutionX", 640, configFile);
-	settings.resY = GetPrivateProfileInt("Graphics", "ResolutionY", 480, configFile);
+	settings.resX = GetPrivateProfileInt("Graphics", "ResolutionX", 0, configFile);
+	settings.resY = GetPrivateProfileInt("Graphics", "ResolutionY", 0, configFile);
 	settings.windowed = getIniBool("Graphics", "Windowed", 0, configFile);
+	settings.borderless = getIniBool("Graphics", "Borderless", 0, configFile);
 
 	settings.shadows = getIniBool("Graphics", "Shadows", 1, configFile);
 	settings.particles = getIniBool("Graphics", "Particles", 1, configFile);
-	settings.animatedTextures = getIniBool("Graphics", "AnimatedTextures", 1, configFile);
-	settings.distanceFog = getIniBool("Graphics", "DistanceFog", 0, configFile);
-	settings.lowDetail = getIniBool("Graphics", "LowDetailModels", 0, configFile);
-   
-	settings.playIntro = getIniBool("Miscellaneous", "PlayIntro", 1, configFile);
+	settings.animating_textures = getIniBool("Graphics", "AnimatedTextures", 1, configFile);
+	settings.distance_fog = getIniBool("Graphics", "DistanceFog", 0, configFile);
+	settings.low_detail_models = getIniBool("Graphics", "LowDetailModels", 0, configFile);
+
+	settings.play_intro = getIniBool("Miscellaneous", "PlayIntro", 1, configFile);
+	settings.il_mode = getIniBool("Miscellaneous", "ILMode", 0, configFile);
+	settings.disable_trick_limit = getIniBool("Miscellaneous", "NoTrickLimit", 0, configFile);
 
 	keybinds.ollie = GetPrivateProfileInt("Keybinds", "Ollie", SDL_SCANCODE_KP_2, configFile);
 	keybinds.grab = GetPrivateProfileInt("Keybinds", "Grab", SDL_SCANCODE_KP_6, configFile);
@@ -343,24 +1162,27 @@ void loadSettings() {
 void saveSettings() {
 	char *configFile = getConfigFile();
 
-	if (settings.resX < 640) {
+	if (settings.resX < 640 && settings.resX != 0 && settings.resY != 0) {
 		settings.resX = 640;
 	}
-	if (settings.resY < 480) {
+	if (settings.resY < 480 && settings.resX != 0 && settings.resY != 0) {
 		settings.resY = 480;
 	}
 
 	writeIniInt("Graphics", "ResolutionX", settings.resX, configFile);
 	writeIniInt("Graphics", "ResolutionY", settings.resY, configFile);
 	writeIniBool("Graphics", "Windowed", settings.windowed, configFile);
+	writeIniBool("Graphics", "Borderless", settings.borderless, configFile);
 
 	writeIniBool("Graphics", "Shadows", settings.shadows, configFile);
 	writeIniBool("Graphics", "Particles", settings.particles, configFile);
-	writeIniBool("Graphics", "AnimatedTextures", settings.animatedTextures, configFile);
-	writeIniBool("Graphics", "DistanceFog", settings.distanceFog, configFile);
-	writeIniBool("Graphics", "LowDetailModels", settings.lowDetail, configFile);
+	writeIniBool("Graphics", "AnimatedTextures", settings.animating_textures, configFile);
+	writeIniBool("Graphics", "DistanceFog", settings.distance_fog, configFile);
+	writeIniBool("Graphics", "LowDetailModels", settings.low_detail_models, configFile);
 
-	writeIniBool("Miscellaneous", "PlayIntro", settings.playIntro, configFile);
+	writeIniBool("Miscellaneous", "PlayIntro", settings.play_intro, configFile);
+	writeIniBool("Miscellaneous", "ILMode", settings.il_mode, configFile);
+	writeIniBool("Miscellaneous", "NoTrickLimit", settings.disable_trick_limit, configFile);
 
 	writeIniInt("Keybinds", "Ollie", keybinds.ollie, configFile);
 	writeIniInt("Keybinds", "Grab", keybinds.grab, configFile);
@@ -407,6 +1229,8 @@ void saveSettings() {
 	writeIniInt("Gamepad", "CameraStick", padbinds.camera, configFile);
 }
 
+// SDL stuff - for keybinds
+
 void cursedSDLSetup() {
 	// in order to key names, SDL has to have created a window
 	// this function achieves that to initialize key binds
@@ -420,17 +1244,27 @@ void cursedSDLSetup() {
 	SDL_Quit();
 }
 
-void setBindText(HWND box, SDL_Scancode key) {
+void setBindText(pgui_control *control, SDL_Scancode key) {
 	// NOTE: requires SDL to be initialized
 	if (key == 0) {
-		Edit_SetText(box, "Unbound");
+		pgui_textbox_set_text(control, "Unbound");
 	} else {
-		Edit_SetText(box, SDL_GetKeyName(SDL_GetKeyFromScancode(key)));
+		pgui_textbox_set_text(control, SDL_GetKeyName(SDL_GetKeyFromScancode(key)));
 	}
 }
 
-void doKeyBind(char *name, SDL_Scancode *target, HWND box) {
-	Edit_SetText(box, "Press key...");
+int doing_keybind = 0;
+
+void doKeyBind(char *name, SDL_Scancode *target, pgui_control *control) {
+	if (doing_keybind) {
+		// trying to do keybind while we're already trying to process one hangs the program, so let's put this off until later
+		// NOTE: this causes a mildly annoying bug where selecting another control to bind fails
+		return;
+	}
+
+	doing_keybind = 1;
+
+	pgui_textbox_set_text(control, "Press key...");
 
 	SDL_Init(SDL_INIT_EVENTS);
 
@@ -438,12 +1272,14 @@ void doKeyBind(char *name, SDL_Scancode *target, HWND box) {
 	sprintf(namebuf, "Press Key To Bind To %s", name);
 
 	RECT windowRect;
-	if (!GetWindowRect(windowHwnd, &windowRect)) {
+
+	if (!GetWindowRect(control->hwnd, &windowRect)) {
 		printf("Failed to get window rect!!\n");
 		return;
 	}
 
-	SDL_Window *inputWindow = SDL_CreateWindow(namebuf, windowRect.left, windowRect.top, windowRect.right - windowRect.left, windowRect.bottom - windowRect.top, SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_BORDERLESS);
+	// create 1x1 window in top left where it's least likely to be noticed
+	SDL_Window *inputWindow = SDL_CreateWindow(namebuf, 0, 0, 1, 1, SDL_WINDOW_INPUT_FOCUS | SDL_WINDOW_BORDERLESS);
 
 	if (!inputWindow) {
 		printf("%s\n", SDL_GetError());
@@ -454,7 +1290,8 @@ void doKeyBind(char *name, SDL_Scancode *target, HWND box) {
 	int doneInput = 0;
 	SDL_Event e;
 	while (!doneInput) {
-		while(SDL_PollEvent(&e) && !doneInput) {
+		//printf("still running event loop\n");
+		while(SDL_PollEvent(&e)) {
 			if (e.type == SDL_KEYDOWN) {
 				SDL_KeyCode keyCode = SDL_GetKeyFromScancode(e.key.keysym.scancode);
 				printf("Pressed key %s\n", SDL_GetKeyName(keyCode));
@@ -472,669 +1309,69 @@ void doKeyBind(char *name, SDL_Scancode *target, HWND box) {
 	}
 	SDL_DestroyWindow(inputWindow);
 
-	setBindText(box, *target);
+	setBindText(control, *target);
 
 	SDL_Quit();
+
+	doing_keybind = 0;
 }
 
-struct settingsPage {
-	HWND page;
-
-	HWND resolutionGroup;
-	HWND graphicsGroup;
-	HWND miscGroup;
-
-	HWND resolutionComboBox;
-	HWND customResolutionCheckbox;
-	HWND customResolutionXLabel;
-	HWND customResolutionXBox;
-	HWND customResolutionYLabel;
-	HWND customResolutionYBox;
-	HWND windowedCheckbox;
-
-	HWND shadowCheckbox;
-	HWND particleCheckbox;
-	HWND animatedTexturesCheckbox;
-	HWND distanceFogCheckbox;
-	HWND lowDetailCheckbox;
-
-	HWND introCheckbox;
+char *gamepad_bind_values[22] = {
+	"Unbound",
+	"A/Cross",
+	"B/Circle",
+	"X/Square",
+	"Y/Triangle",
+	"D-Pad Up",
+	"D-Pad Down",
+	"D-Pad Left",
+	"D-Pad Right",
+	"LB/L1",
+	"RB/R1",
+	"LT/L2",
+	"RT/R2",
+	"Left Stick/L3",
+	"Right Stick/R3",
+	"Select/Back",
+	"Start/Options",
+	"Touchpad",
+	"Paddle 1",
+	"Paddle 2",
+	"Paddle 3",
+	"Paddle 4"
 };
 
-struct keyboardPage {
-	HWND page;
-
-	HWND actionGroup;
-	HWND movementGroup;
-	HWND cameraGroup;
-
-	HWND ollieLabel;
-	HWND ollieBox;
-	HWND grabLabel;
-	HWND grabBox;
-	HWND flipLabel;
-	HWND flipBox;
-	HWND grindLabel;
-	HWND grindBox;
-	HWND spinLLabel;
-	HWND spinLBox;
-	HWND spinRLabel;
-	HWND spinRBox;
-	HWND nollieLabel;
-	HWND nollieBox;
-	HWND switchLabel;
-	HWND switchBox;
-	HWND pauseLabel;
-	HWND pauseBox;
-
-	HWND forwardLabel;
-	HWND forwardBox;
-	HWND backwardLabel;
-	HWND backwardBox;
-	HWND leftLabel;
-	HWND leftBox;
-	HWND rightLabel;
-	HWND rightBox;
-	
-	HWND camUpLabel;
-	HWND camUpBox;
-	HWND camDownLabel;
-	HWND camDownBox;
-	HWND camLeftLabel;
-	HWND camLeftBox;
-	HWND camRightLabel;
-	HWND camRightBox;
-	HWND viewToggleLabel;
-	HWND viewToggleBox;
-	HWND swivelLockLabel;
-	HWND swivelLockBox;
+char *gamepad_stick_values[3] = {
+	"Unbound",
+	"Left Stick",
+	"Right Stick"
 };
 
-struct gamepadPage {
-	HWND page;
+struct gamepad_page {
+	pgui_control *ollie;
+	pgui_control *grab;
+	pgui_control *flip;
+	pgui_control *grind;
+	pgui_control *spin_left;
+	pgui_control *spin_right;
+	pgui_control *nollie;
+	pgui_control *switch_revert;
+	pgui_control *pause;
 
-	HWND actionGroup;
-	HWND movementGroup;
-	HWND cameraGroup;
+	pgui_control *forward;
+	pgui_control *backward;
+	pgui_control *left;
+	pgui_control *right;
+	pgui_control *movement_stick;
 
-	HWND ollieLabel;
-	HWND ollieBox;
-	HWND grabLabel;
-	HWND grabBox;
-	HWND flipLabel;
-	HWND flipBox;
-	HWND grindLabel;
-	HWND grindBox;
-	HWND spinLLabel;
-	HWND spinLBox;
-	HWND spinRLabel;
-	HWND spinRBox;
-	HWND nollieLabel;
-	HWND nollieBox;
-	HWND switchLabel;
-	HWND switchBox;
-	HWND pauseLabel;
-	HWND pauseBox;
-
-	HWND forwardLabel;
-	HWND forwardBox;
-	HWND backwardLabel;
-	HWND backwardBox;
-	HWND leftLabel;
-	HWND leftBox;
-	HWND rightLabel;
-	HWND rightBox;
-	HWND moveStickLabel;
-	HWND moveStickBox;
-	
-	HWND camStickLabel;
-	HWND camStickBox;
-	HWND viewToggleLabel;
-	HWND viewToggleBox;
-	HWND swivelLockLabel;
-	HWND swivelLockBox;
+	pgui_control *camera_stick;
+	pgui_control *view_toggle;
+	pgui_control *swivel_lock;
 };
 
-struct settingsPage settingsPage;
-struct keyboardPage keyboardPage;
-struct gamepadPage gamepadPage;
+struct gamepad_page gamepad_page;
 
-#define CHECK_CUSTOMRESOLUTION 0x8801
-#define CHECK_WINDOWED 0x8802
-#define CHECK_SHADOW 0x8803
-#define CHECK_PARTICLE 0x8804
-#define CHECK_ANIMATEDTEXTURES 0x8805
-#define CHECK_DISTANCEFOG 0x8806
-#define CHECK_LOWDETAIL 0x8807
-#define CHECK_INTRO 0x8808
-#define COMBOBOX_RES 0x8809
-#define FIELD_RESX 0x880a
-#define FIELD_RESY 0x880b
-
-int toggleCheck(HWND control) {
-	int checkstate = SendMessage(control, BM_GETCHECK, 0, 0);
-	if (checkstate == BST_UNCHECKED) {
-		SendMessage(control, BM_SETCHECK, BST_CHECKED, 0);
-		return 1;
-	} else {
-		SendMessage(control, BM_SETCHECK, BST_UNCHECKED, 0);
-		return 0;
-	}
-}
-
-LRESULT CALLBACK generalPageProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	switch (uMsg) {
-		case WM_COMMAND: {
-			int controlId = LOWORD(wParam);
-
-			if (controlId == CHECK_CUSTOMRESOLUTION) {
-				if (toggleCheck(settingsPage.customResolutionCheckbox)) {
-					// enable custom resolution boxes, disable combo box
-					ComboBox_Enable(settingsPage.resolutionComboBox, FALSE);
-					Static_Enable(settingsPage.customResolutionXLabel, TRUE);
-					Edit_Enable(settingsPage.customResolutionXBox, TRUE);
-					Static_Enable(settingsPage.customResolutionYLabel, TRUE);
-					Edit_Enable(settingsPage.customResolutionYBox, TRUE);
-
-					char entryBuffer[16];
-					Edit_GetText(settingsPage.customResolutionXBox, entryBuffer, 16);
-					settings.resX = atoi(entryBuffer);
-
-					Edit_GetText(settingsPage.customResolutionYBox, entryBuffer, 16);
-					settings.resY = atoi(entryBuffer);
-				} else {
-					// disable custom resolution boxes, enable combo box
-					ComboBox_Enable(settingsPage.resolutionComboBox, TRUE);
-					Static_Enable(settingsPage.customResolutionXLabel, FALSE);
-					Edit_Enable(settingsPage.customResolutionXBox, FALSE);
-					Static_Enable(settingsPage.customResolutionYLabel, FALSE);
-					Edit_Enable(settingsPage.customResolutionYBox, FALSE);
-
-					int idx = ComboBox_GetCurSel(settingsPage.resolutionComboBox);
-
-					settings.resX = displayModeList[idx].width;
-					settings.resY = displayModeList[idx].height;
-				}
-			} else if (controlId == COMBOBOX_RES) {
-				if (HIWORD(wParam) == 1) {
-					int idx = ComboBox_GetCurSel(lParam);
-
-					settings.resX = displayModeList[idx].width;
-					settings.resY = displayModeList[idx].height;
-				}
-			} else if (controlId == FIELD_RESX) {
-				if (HIWORD(wParam) == EN_KILLFOCUS) {
-					char entryBuffer[16];
-					Edit_GetText(settingsPage.customResolutionXBox, entryBuffer, 16);
-					settings.resX = atoi(entryBuffer);
-
-					if (settings.resX < 320) {
-						settings.resX = 320;
-					}
-
-					itoa(settings.resX, entryBuffer, 10);
-					Edit_SetText(settingsPage.customResolutionXBox, entryBuffer);
-				}
-			} else if (controlId == FIELD_RESY) {
-				if (HIWORD(wParam) == EN_KILLFOCUS) {
-					char entryBuffer[16];
-					Edit_GetText(settingsPage.customResolutionYBox, entryBuffer, 16);
-					settings.resY = atoi(entryBuffer);
-
-					if (settings.resY < 240) {
-						settings.resY = 240;
-					}
-
-					itoa(settings.resY, entryBuffer, 10);
-					Edit_SetText(settingsPage.customResolutionYBox, entryBuffer);
-				}
-			} else if (controlId == CHECK_WINDOWED) {
-				settings.windowed = toggleCheck(settingsPage.windowedCheckbox);
-			} else if (controlId == CHECK_SHADOW) {
-				settings.shadows = toggleCheck(settingsPage.shadowCheckbox);
-			} else if (controlId == CHECK_PARTICLE) {
-				settings.particles = toggleCheck(settingsPage.particleCheckbox);
-			} else if (controlId == CHECK_ANIMATEDTEXTURES) {
-				settings.animatedTextures = toggleCheck(settingsPage.animatedTexturesCheckbox);
-			} else if (controlId == CHECK_DISTANCEFOG) {
-				settings.distanceFog = toggleCheck(settingsPage.distanceFogCheckbox);
-			} else if (controlId == CHECK_LOWDETAIL) {
-				settings.lowDetail = toggleCheck(settingsPage.lowDetailCheckbox);
-			} else if (controlId == CHECK_INTRO) {
-				settings.playIntro = toggleCheck(settingsPage.introCheckbox);
-			}
-
-			return 0;
-		}
-	}
-
-
-	return DefWindowProc(hwnd, uMsg, wParam, lParam);
-}
-
-HWND createSettingsPage(HWND parent, HINSTANCE hinst, RECT rect) {
-	// TODO: create struct here
-	//HWND result = CreateWindow(WC_STATIC, L"", WS_CHILD | WS_VISIBLE, rect.left, rect.top, rect.right, rect.bottom, parent, NULL, hinst, NULL);
-
-	const char *className  = "General Page Class";
-
-	WNDCLASS wc = { 0,
-		generalPageProc,
-		0,
-		0,
-		hinst,
-		NULL,
-		NULL,
-		NULL,
-		NULL,
-		className
-	};
-
-	RegisterClass(&wc);
-
-	HWND result = CreateWindow(className, L"", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, parent, NULL, hinst, NULL);
-	// TODO: add handler that destroys struct
-
-	RECT pageRect;
-	GetClientRect(result, &pageRect);
-
-	int pageWidth = pageRect.right - pageRect.left;
-	int pageHeight = pageRect.bottom - pageRect.top;
-
-	// RESOLUTION BOX
-	int resolutionGroupX = 8;
-	int resolutionGroupY = 8;
-	settingsPage.resolutionGroup = CreateWindow(WC_BUTTON, "Resolution", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_GROUPBOX, resolutionGroupX, resolutionGroupY, pageWidth - 16, (pageHeight / 2) - 16, result, NULL, hinst, NULL);
-	SendMessage(settingsPage.resolutionGroup, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	settingsPage.resolutionComboBox = CreateWindow(WC_COMBOBOX, "", WS_TABSTOP | WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST, resolutionGroupX + 8, resolutionGroupY + 16, 200, 128, result, COMBOBOX_RES, hinst, NULL);
-	SendMessage(settingsPage.resolutionComboBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	settingsPage.customResolutionCheckbox = CreateWindow(WC_BUTTON, "Use Custom Resolution", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_CHECKBOX, resolutionGroupX + 8, resolutionGroupY + 16 + 24, 200, 24, result, CHECK_CUSTOMRESOLUTION, hinst, NULL);
-	SendMessage(settingsPage.customResolutionCheckbox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	settingsPage.customResolutionXLabel = CreateWindow(WC_STATIC, "Width:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE | SS_CENTER, resolutionGroupX + 16, resolutionGroupY + 16 + (24 * 2), 48, 24, result, NULL, hinst, NULL);
-	SendMessage(settingsPage.customResolutionXLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	settingsPage.customResolutionXBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, resolutionGroupX + 16 + 48, resolutionGroupY + 16 + (24 * 2), 48, 24, result, FIELD_RESX, hinst, NULL);
-	SendMessage(settingsPage.customResolutionXBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	settingsPage.customResolutionYLabel = CreateWindow(WC_STATIC, "Height:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE | SS_CENTER, resolutionGroupX + 16 + 96, resolutionGroupY + 16 + (24 * 2), 48, 24, result, NULL, hinst, NULL);
-	SendMessage(settingsPage.customResolutionYLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	settingsPage.customResolutionYBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, resolutionGroupX + 16 + 144, resolutionGroupY + 16 + (24 * 2), 48, 24, result, FIELD_RESY, hinst, NULL);
-	SendMessage(settingsPage.customResolutionYBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	settingsPage.windowedCheckbox = CreateWindow(WC_BUTTON, "Windowed", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_CHECKBOX, resolutionGroupX + 8, resolutionGroupY + 16 + (24 * 3), 200, 24, result, CHECK_WINDOWED, hinst, NULL);
-	SendMessage(settingsPage.windowedCheckbox, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	//ComboBox_AddItemData
-	for (int i = 0; i < numDisplayModes; i++) {
-		char resolutionString[64];
-		sprintf(resolutionString, "%dx%d", displayModeList[i].width, displayModeList[i].height);
-		ComboBox_AddString(settingsPage.resolutionComboBox, resolutionString);
-	}
-	ComboBox_SetCurSel(settingsPage.resolutionComboBox, 0);
-
-	SetWindowPos(settingsPage.resolutionGroup, settingsPage.customResolutionYBox, resolutionGroupX, resolutionGroupY, pageWidth - 16, (pageHeight / 2) - 16, HWND_BOTTOM);
-
-	// GRAPHICS BOX
-	int graphicsGroupX = 8;
-	int graphicsGroupY = (pageHeight / 2) + 8;
-	HWND graphicsGroup = CreateWindowEx(WS_EX_CONTROLPARENT, WC_BUTTON, "Graphics", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_GROUPBOX, graphicsGroupX, graphicsGroupY, (pageWidth / 2) - 16, (pageHeight / 2) - 16, result, NULL, hinst, NULL);
-	SendMessage(graphicsGroup, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	settingsPage.shadowCheckbox = CreateWindow(WC_BUTTON, "Shadows", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_CHECKBOX, graphicsGroupX + 8, graphicsGroupY + 16, 150, 24, result, CHECK_SHADOW, hinst, NULL);
-	SendMessage(settingsPage.shadowCheckbox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	settingsPage.particleCheckbox = CreateWindow(WC_BUTTON, "Particles", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_CHECKBOX, graphicsGroupX + 8, graphicsGroupY + 16 + 24, 150, 24, result, CHECK_PARTICLE, hinst, NULL);
-	SendMessage(settingsPage.particleCheckbox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	settingsPage.animatedTexturesCheckbox = CreateWindow(WC_BUTTON, "Animating Textures", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_CHECKBOX, graphicsGroupX + 8, graphicsGroupY + 16 + (24 * 2), 150, 24, result, CHECK_ANIMATEDTEXTURES, hinst, NULL);
-	SendMessage(settingsPage.animatedTexturesCheckbox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	settingsPage.distanceFogCheckbox = CreateWindow(WC_BUTTON, "Distance Fog", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_CHECKBOX, graphicsGroupX + 8, graphicsGroupY + 16 + (24 * 3), 150, 24, result, CHECK_DISTANCEFOG, hinst, NULL);
-	SendMessage(settingsPage.distanceFogCheckbox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	settingsPage.lowDetailCheckbox = CreateWindow(WC_BUTTON, "Low Detail Models", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_CHECKBOX, graphicsGroupX + 8, graphicsGroupY + 16 + (24 * 4), 150, 24, result, CHECK_LOWDETAIL, hinst, NULL);
-	SendMessage(settingsPage.lowDetailCheckbox, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	// MISC BOX
-	int miscGroupX = (pageWidth / 2) + 8;
-	int miscGroupY = (pageHeight / 2) + 8;
-	settingsPage.miscGroup = CreateWindowEx(WS_EX_CONTROLPARENT, WC_BUTTON, "Miscellaneous", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_GROUPBOX, miscGroupX, miscGroupY, (pageWidth / 2) - 16, (pageHeight / 2) - 16, result, NULL, hinst, NULL);
-	SendMessage(settingsPage.miscGroup, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	settingsPage.introCheckbox = CreateWindowEx(WS_EX_CONTROLPARENT, WC_BUTTON, "Always Play Intro", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_CHECKBOX, miscGroupX + 8, miscGroupY + 16, 150, 24, result, CHECK_INTRO, hinst, NULL);
-	SendMessage(settingsPage.introCheckbox, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	settingsPage.page = result;
-
-	return result;
-}
-
-void updateSettingsPage() {
-	int foundResolution = 0;
-	for (int i = 0; i < numDisplayModes; i++) {
-		if (displayModeList[i].width == settings.resX && displayModeList[i].height == settings.resY) {
-			foundResolution = 1;
-			ComboBox_SetCurSel(settingsPage.resolutionComboBox, i);
-
-			Button_SetCheck(settingsPage.customResolutionCheckbox, 0);
-			ComboBox_Enable(settingsPage.resolutionComboBox, TRUE);
-			Static_Enable(settingsPage.customResolutionXLabel, FALSE);
-			Edit_Enable(settingsPage.customResolutionXBox, FALSE);
-			Static_Enable(settingsPage.customResolutionYLabel, FALSE);
-			Edit_Enable(settingsPage.customResolutionYBox, FALSE);
-
-			break;
-		}
-	}
-
-	if (!foundResolution) {
-		char buf[16];
-		itoa(settings.resX, buf, 10);
-		Edit_SetText(settingsPage.customResolutionXBox, buf);
-		itoa(settings.resY, buf, 10);
-		Edit_SetText(settingsPage.customResolutionYBox, buf);
-
-		Button_SetCheck(settingsPage.customResolutionCheckbox, 1);
-		ComboBox_Enable(settingsPage.resolutionComboBox, FALSE);
-		Static_Enable(settingsPage.customResolutionXLabel, TRUE);
-		Edit_Enable(settingsPage.customResolutionXBox, TRUE);
-		Static_Enable(settingsPage.customResolutionYLabel, TRUE);
-		Edit_Enable(settingsPage.customResolutionYBox, TRUE);
-	}
-
-	Button_SetCheck(settingsPage.windowedCheckbox, (settings.windowed) ? BST_CHECKED : BST_UNCHECKED);
-
-	Button_SetCheck(settingsPage.shadowCheckbox, (settings.shadows) ? BST_CHECKED : BST_UNCHECKED);
-	Button_SetCheck(settingsPage.particleCheckbox, (settings.particles) ? BST_CHECKED : BST_UNCHECKED);
-	Button_SetCheck(settingsPage.animatedTexturesCheckbox, (settings.animatedTextures) ? BST_CHECKED : BST_UNCHECKED);
-	Button_SetCheck(settingsPage.distanceFogCheckbox, (settings.distanceFog) ? BST_CHECKED : BST_UNCHECKED);
-	Button_SetCheck(settingsPage.lowDetailCheckbox, (settings.lowDetail) ? BST_CHECKED : BST_UNCHECKED);
-
-	Button_SetCheck(settingsPage.introCheckbox, (settings.playIntro) ? BST_CHECKED : BST_UNCHECKED);
-}
-
-#define FIELD_OLLIE 0x8801
-#define FIELD_GRAB 0x8802
-#define FIELD_FLIP 0x8803
-#define FIELD_GRIND 0x8804
-#define FIELD_SPINL 0x8805
-#define FIELD_SPINR 0x8806
-#define FIELD_NOLLIE 0x8807
-#define FIELD_SWITCH 0x8808
-#define FIELD_PAUSE 0x8809
-#define FIELD_FORWARD 0x880a
-#define FIELD_BACKWARD 0x880b
-#define FIELD_LEFT 0x880c
-#define FIELD_RIGHT 0x880d
-#define FIELD_CAMUP 0x880e
-#define FIELD_CAMDOWN 0x880f
-#define FIELD_CAMLEFT 0x8810
-#define FIELD_CAMRIGHT 0x8811
-#define FIELD_VIEWTOGGLE 0x8812
-#define FIELD_SWIVELLOCK 0x8813
-
-void setAllBindText() {
-	setBindText(keyboardPage.ollieBox, keybinds.ollie);
-	setBindText(keyboardPage.grabBox, keybinds.grab);
-	setBindText(keyboardPage.flipBox, keybinds.flip);
-	setBindText(keyboardPage.grindBox, keybinds.grind);
-	setBindText(keyboardPage.spinLBox, keybinds.spinLeft);
-	setBindText(keyboardPage.spinRBox, keybinds.spinRight);
-	setBindText(keyboardPage.nollieBox, keybinds.nollie);
-	setBindText(keyboardPage.switchBox, keybinds.switchRevert);
-	setBindText(keyboardPage.pauseBox, keybinds.pause);
-
-	setBindText(keyboardPage.forwardBox, keybinds.forward);
-	setBindText(keyboardPage.backwardBox, keybinds.backward);
-	setBindText(keyboardPage.leftBox, keybinds.left);
-	setBindText(keyboardPage.rightBox, keybinds.right);
-
-	setBindText(keyboardPage.camUpBox, keybinds.camUp);
-	setBindText(keyboardPage.camDownBox, keybinds.camDown);
-	setBindText(keyboardPage.camLeftBox, keybinds.camLeft);
-	setBindText(keyboardPage.camRightBox, keybinds.camRight);
-	setBindText(keyboardPage.viewToggleBox, keybinds.viewToggle);
-	setBindText(keyboardPage.swivelLockBox, keybinds.swivelLock);
-}
-
-LRESULT CALLBACK keyboardPageProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	switch (uMsg)
-	{
-		case WM_COMMAND: {
-			int controlId = LOWORD(wParam);
-			int controlCode = HIWORD(wParam);
-
-			if (controlCode == EN_SETFOCUS) {
-				switch (controlId) {
-				case FIELD_OLLIE:
-					doKeyBind("Ollie", &keybinds.ollie, keyboardPage.ollieBox);
-					break;
-				case FIELD_GRAB:
-					doKeyBind("Grab", &keybinds.grab, keyboardPage.grabBox);
-					break;
-				case FIELD_FLIP:
-					doKeyBind("Flip", &keybinds.flip, keyboardPage.flipBox);
-					break;
-				case FIELD_GRIND:
-					doKeyBind("Grind", &keybinds.grind, keyboardPage.grindBox);
-					break;
-				case FIELD_SPINL:
-					doKeyBind("Spin Left", &keybinds.spinLeft, keyboardPage.spinLBox);
-					break;
-				case FIELD_SPINR:
-					doKeyBind("Spin Right", &keybinds.spinRight, keyboardPage.spinRBox);
-					break;
-				case FIELD_NOLLIE:
-					doKeyBind("Nollie", &keybinds.nollie, keyboardPage.nollieBox);
-					break;
-				case FIELD_SWITCH:
-					doKeyBind("Switch", &keybinds.switchRevert, keyboardPage.switchBox);
-					break;
-				case FIELD_PAUSE:
-					doKeyBind("Pause", &keybinds.pause, keyboardPage.pauseBox);
-					break;
-				case FIELD_FORWARD:
-					doKeyBind("Forward", &keybinds.forward, keyboardPage.forwardBox);
-					break;
-				case FIELD_BACKWARD:
-					doKeyBind("Backward", &keybinds.backward, keyboardPage.backwardBox);
-					break;
-				case FIELD_LEFT:
-					doKeyBind("Left", &keybinds.left, keyboardPage.leftBox);
-					break;
-				case FIELD_RIGHT:
-					doKeyBind("Right", &keybinds.right, keyboardPage.rightBox);
-					break;
-				case FIELD_CAMUP:
-					doKeyBind("Camera Up", &keybinds.camUp, keyboardPage.camUpBox);
-					break;
-				case FIELD_CAMDOWN:
-					doKeyBind("Camera Down", &keybinds.camDown, keyboardPage.camDownBox);
-					break;
-				case FIELD_CAMLEFT:
-					doKeyBind("Camera Left", &keybinds.camLeft, keyboardPage.camLeftBox);
-					break;
-				case FIELD_CAMRIGHT:
-					doKeyBind("Camera Right", &keybinds.camRight, keyboardPage.camRightBox);
-					break;
-				case FIELD_VIEWTOGGLE:
-					doKeyBind("View Toggle", &keybinds.viewToggle, keyboardPage.viewToggleBox);
-					break;
-				case FIELD_SWIVELLOCK:
-					doKeyBind("Swivel Lock", &keybinds.swivelLock, keyboardPage.swivelLockBox);
-					break;
-				default:
-					break;
-				}
-			}
-
-			return 0;
-		}
-	}
-
-
-	return DefWindowProc(hwnd, uMsg, wParam, lParam);
-}
-
-HWND createKeyboardPage(HWND parent, HINSTANCE hinst, RECT rect) {
-	// TODO: create struct here
-	//HWND result = CreateWindow(WC_STATIC, L"", WS_CHILD | WS_VISIBLE, rect.left, rect.top, rect.right, rect.bottom, parent, NULL, hinst, NULL);
-
-	const char *className = "Keyboard Page Class";
-
-	WNDCLASS wc = { 0,
-		keyboardPageProc,
-		0,
-		0,
-		hinst,
-		NULL,
-		NULL,
-		NULL,
-		NULL,
-		className
-	};
-
-	RegisterClass(&wc);
-
-	HWND result = CreateWindow(className, L"", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, parent, NULL, hinst, NULL);
-	// TODO: add handler that destroys struct
-
-	RECT pageRect;
-	GetClientRect(result, &pageRect);
-
-	int pageWidth = pageRect.right - pageRect.left;
-	int pageHeight = pageRect.bottom - pageRect.top;
-
-	// SKATER BOX
-	int resolutionGroupX = 8;
-	int resolutionGroupY = 8;
-	int boxHeight = 20;
-	int labelHPos = resolutionGroupX + 8;
-	int boxHPos = resolutionGroupX + ((pageWidth / 2) - 16 - 8 - 64);
-	int boxVSpacing = 32;
-
-	keyboardPage.actionGroup = CreateWindow(WC_BUTTON, "Actions", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_GROUPBOX, resolutionGroupX, resolutionGroupY, (pageWidth / 2) - 16, pageHeight - 16, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.actionGroup, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	keyboardPage.ollieLabel = CreateWindow(WC_STATIC, "Ollie:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16, 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.ollieLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.ollieBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, resolutionGroupY + 16, 64, boxHeight, result, (HMENU)FIELD_OLLIE, hinst, NULL);
-	SendMessage(keyboardPage.ollieBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.grabLabel = CreateWindow(WC_STATIC, "Grab:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 1), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.grabLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.grabBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, resolutionGroupY + 16 + (boxVSpacing * 1), 64, boxHeight, result, (HMENU)FIELD_GRAB, hinst, NULL);
-	SendMessage(keyboardPage.grabBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.flipLabel = CreateWindow(WC_STATIC, "Flip:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 2), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.flipLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.flipBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, resolutionGroupY + 16 + (boxVSpacing * 2), 64, boxHeight, result, (HMENU)FIELD_FLIP, hinst, NULL);
-	SendMessage(keyboardPage.flipBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.grindLabel = CreateWindow(WC_STATIC, "Grind:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 3), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.grindLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.grindBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, resolutionGroupY + 16 + (boxVSpacing * 3), 64, boxHeight, result, (HMENU)FIELD_GRIND, hinst, NULL);
-	SendMessage(keyboardPage.grindBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.spinLLabel = CreateWindow(WC_STATIC, "Spin Left:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 4), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.spinLLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.spinLBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, resolutionGroupY + 16 + (boxVSpacing * 4), 64, boxHeight, result, (HMENU)FIELD_SPINL, hinst, NULL);
-	SendMessage(keyboardPage.spinLBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.spinRLabel = CreateWindow(WC_STATIC, "Spin Right:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 5), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.spinRLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.spinRBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, resolutionGroupY + 16 + (boxVSpacing * 5), 64, boxHeight, result, (HMENU)FIELD_SPINR, hinst, NULL);
-	SendMessage(keyboardPage.spinRBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.nollieLabel = CreateWindow(WC_STATIC, "Nollie:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 6), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.nollieLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.nollieBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, resolutionGroupY + 16 + (boxVSpacing * 6), 64, boxHeight, result, (HMENU)FIELD_NOLLIE, hinst, NULL);
-	SendMessage(keyboardPage.nollieBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.switchLabel = CreateWindow(WC_STATIC, "Switch:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 7), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.switchLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.switchBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, resolutionGroupY + 16 + (boxVSpacing * 7), 64, boxHeight, result, (HMENU)FIELD_SWITCH, hinst, NULL);
-	SendMessage(keyboardPage.switchBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.pauseLabel = CreateWindow(WC_STATIC, "Pause:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 8), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.pauseLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.pauseBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, resolutionGroupY + 16 + (boxVSpacing * 8), 64, boxHeight, result, (HMENU)FIELD_PAUSE, hinst, NULL);
-	SendMessage(keyboardPage.pauseBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	SetWindowPos(keyboardPage.actionGroup, keyboardPage.pauseBox, resolutionGroupX, resolutionGroupY, pageWidth - 16, (pageHeight / 2) - 16, HWND_BOTTOM);
-
-	// CAMERA BOX
-	int graphicsGroupX = (pageWidth / 2) + 8;
-	int graphicsGroupY = 8;
-	labelHPos = graphicsGroupX + 8;
-	boxHPos = graphicsGroupX + ((pageWidth / 2) - 16 - 8 - 64);
-	boxVSpacing = 24;
-
-	keyboardPage.movementGroup = CreateWindowEx(WS_EX_CONTROLPARENT, WC_BUTTON, "Skater Controls", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_GROUPBOX, graphicsGroupX, graphicsGroupY, (pageWidth / 2) - 16, (pageHeight / 2) - 16, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.movementGroup, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	keyboardPage.forwardLabel = CreateWindow(WC_STATIC, "Forward:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, graphicsGroupY + 16, 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.forwardLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.forwardBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, graphicsGroupY + 16, 64, boxHeight, result, (HMENU)FIELD_FORWARD, hinst, NULL);
-	SendMessage(keyboardPage.forwardBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.backwardLabel = CreateWindow(WC_STATIC, "Backward:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, graphicsGroupY + 16 + (boxVSpacing * 1), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.backwardLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.backwardBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, graphicsGroupY + 16 + (boxVSpacing * 1), 64, boxHeight, result, (HMENU)FIELD_BACKWARD, hinst, NULL);
-	SendMessage(keyboardPage.backwardBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.leftLabel = CreateWindow(WC_STATIC, "Left:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, graphicsGroupY + 16 + (boxVSpacing * 2), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.leftLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.leftBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, graphicsGroupY + 16 + (boxVSpacing * 2), 64, boxHeight, result, (HMENU)FIELD_LEFT, hinst, NULL);
-	SendMessage(keyboardPage.leftBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.rightLabel = CreateWindow(WC_STATIC, "Right:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, graphicsGroupY + 16 + (boxVSpacing * 3), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.rightLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.rightBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, graphicsGroupY + 16 + (boxVSpacing * 3), 64, boxHeight, result, (HMENU)FIELD_RIGHT, hinst, NULL);
-	SendMessage(keyboardPage.rightBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	SetWindowPos(keyboardPage.movementGroup, keyboardPage.rightBox, graphicsGroupX, graphicsGroupY, (pageWidth / 2) - 16, (pageHeight / 2) - 16, HWND_BOTTOM);
-
-	// MISC BOX
-	int miscGroupX = (pageWidth / 2) + 8;
-	int miscGroupY = (pageHeight / 2) + 8;
-	keyboardPage.cameraGroup = CreateWindowEx(WS_EX_CONTROLPARENT, WC_BUTTON, "Camera Controls", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_GROUPBOX, miscGroupX, miscGroupY, (pageWidth / 2) - 16, (pageHeight / 2) - 16, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.cameraGroup, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	keyboardPage.camUpLabel = CreateWindow(WC_STATIC, "Camera Up:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, miscGroupY + 16, 80, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.camUpLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.camUpBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, miscGroupY + 16, 64, boxHeight, result, (HMENU)FIELD_CAMUP, hinst, NULL);
-	SendMessage(keyboardPage.camUpBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.camDownLabel = CreateWindow(WC_STATIC, "Camera Down:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, miscGroupY + 16 + (boxVSpacing * 1), 80, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.camDownLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.camDownBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, miscGroupY + 16 + (boxVSpacing * 1), 64, boxHeight, result, (HMENU)FIELD_CAMDOWN, hinst, NULL);
-	SendMessage(keyboardPage.camDownBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.camLeftLabel = CreateWindow(WC_STATIC, "Camera Left:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, miscGroupY + 16 + (boxVSpacing * 2), 80, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.camLeftLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.camLeftBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, miscGroupY + 16 + (boxVSpacing * 2), 64, boxHeight, result, (HMENU)FIELD_CAMLEFT, hinst, NULL);
-	SendMessage(keyboardPage.camLeftBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.camRightLabel = CreateWindow(WC_STATIC, "Camera Right:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, miscGroupY + 16 + (boxVSpacing * 3), 80, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.camRightLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.camRightBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, miscGroupY + 16 + (boxVSpacing * 3), 64, boxHeight, result, (HMENU)FIELD_CAMRIGHT, hinst, NULL);
-	SendMessage(keyboardPage.camRightBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.viewToggleLabel = CreateWindow(WC_STATIC, "View Toggle:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, miscGroupY + 16 + (boxVSpacing * 4), 80, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.viewToggleLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.viewToggleBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, miscGroupY + 16 + (boxVSpacing * 4), 64, boxHeight, result, (HMENU)FIELD_VIEWTOGGLE, hinst, NULL);
-	SendMessage(keyboardPage.viewToggleBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.swivelLockLabel = CreateWindow(WC_STATIC, "Swivel Lock:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, miscGroupY + 16 + (boxVSpacing * 5), 80, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(keyboardPage.swivelLockLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	keyboardPage.swivelLockBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, "", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, boxHPos, miscGroupY + 16 + (boxVSpacing * 5), 64, boxHeight, result, (HMENU)FIELD_SWIVELLOCK, hinst, NULL);
-	SendMessage(keyboardPage.swivelLockBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	SetWindowPos(keyboardPage.cameraGroup, keyboardPage.swivelLockBox, miscGroupX, miscGroupY, (pageWidth / 2) - 16, (pageHeight / 2) - 16, HWND_BOTTOM);
-
-	keyboardPage.page = result;
-
-	return result;
-}
-
-#define COMBOBOX_OLLIE 0x8801
-#define COMBOBOX_GRAB 0x8802
-#define COMBOBOX_FLIP 0x8803
-#define COMBOBOX_GRIND 0x8804
-#define COMBOBOX_SPINL 0x8805
-#define COMBOBOX_SPINR 0x8806
-#define COMBOBOX_NOLLIE 0x8807
-#define COMBOBOX_SWITCH 0x8808
-#define COMBOBOX_PAUSE 0x8809
-#define COMBOBOX_FORWARD 0x880a
-#define COMBOBOX_BACKWARD 0x880b
-#define COMBOBOX_LEFT 0x880c
-#define COMBOBOX_RIGHT 0x880d
-#define COMBOBOX_MOVESTICK 0x880e
-#define COMBOBOX_CAMSTICK 0x880f
-#define COMBOBOX_VIEWTOGGLE 0x8810
-#define COMBOBOX_SWIVELLOCK 0x8811
-
-setButtonBindBox(HWND box, controllerButton bind) {
+setButtonBindBox(pgui_control *control, controllerButton bind) {
 	int sel = 0;
 
 	switch(bind) {
@@ -1206,10 +1443,10 @@ setButtonBindBox(HWND box, controllerButton bind) {
 		break;
 	}
 
-	ComboBox_SetCurSel(box, sel);
+	pgui_combobox_set_selection(control, sel);
 }
 
-setStickBindBox(HWND box, controllerButton bind) {
+setStickBindBox(pgui_control *control, controllerButton bind) {
 	int sel = 0;
 
 	switch(bind) {
@@ -1224,496 +1461,503 @@ setStickBindBox(HWND box, controllerButton bind) {
 		break;
 	}
 
-	ComboBox_SetCurSel(box, sel);
+	pgui_combobox_set_selection(control, sel);
+}
+
+void do_button_select(pgui_control *control, int value, controllerButton *target) {
+	*target = buttonLUT[value];
+	printf("Set button to %d\n", buttonLUT[value]);
+}
+
+void do_stick_select(pgui_control *control, int value, controllerStick *target) {
+	*target = stickLUT[value];
+}
+
+pgui_control *build_button_combobox(int x, int y, int w, int h, pgui_control *parent, controllerButton *target) {
+	pgui_control *result = pgui_combobox_create(x, y, w, h, gamepad_bind_values, 22, parent);
+	pgui_combobox_set_on_select(result, do_button_select, target);
+
+	return result;
+}
+
+pgui_control *build_stick_combobox(int x, int y, int w, int h, pgui_control *parent, controllerStick *target) {
+	pgui_control *result = pgui_combobox_create(x, y, w, h, gamepad_stick_values, 3, parent);
+	pgui_combobox_set_on_select(result, do_stick_select, target);
+
+	return result;
+}
+
+void build_gamepad_page(pgui_control *parent) {
+	pgui_control *actions_groupbox = pgui_groupbox_create(8, 8, (parent->w / 2) - 8 - 4, parent->h - 8 - 8, "Actions", parent);
+	pgui_control *skater_groupbox = pgui_groupbox_create((parent->w / 2) + 4, 8, (parent->w / 2) - 8 - 4, (parent->h / 2) - 8 - 4 + 32, "Skater Controls", parent);
+	pgui_control *camera_groupbox = pgui_groupbox_create((parent->w / 2) + 4, (parent->h / 2) + 4 + 32, (parent->w / 2) - 8 - 4, (parent->h / 2) - 8 - 4 - 32, "Camera Controls", parent);
+
+	int label_offset = 4;
+	int graphics_v_spacing = 39;
+	int skater_v_spacing = 39;
+	int camera_v_spacing = 39;
+	int box_width = 80;
+
+	// actions
+
+	pgui_label_create(8, 16 + label_offset, 96, 16, "Ollie:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	gamepad_page.ollie = build_button_combobox(actions_groupbox->w - 8 - box_width, 16, box_width, 20, actions_groupbox, &(padbinds.ollie));
+
+	pgui_label_create(8, 16 + label_offset + (graphics_v_spacing), 96, 16, "Grab:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	gamepad_page.grab = build_button_combobox(actions_groupbox->w - 8 - box_width, 16 + (graphics_v_spacing), box_width, 20, actions_groupbox, &(padbinds.grab));
+
+	pgui_label_create(8, 16 + label_offset + (graphics_v_spacing * 2), 96, 16, "Flip:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	gamepad_page.flip = build_button_combobox(actions_groupbox->w - 8 - box_width, 16 + (graphics_v_spacing * 2), box_width, 20, actions_groupbox, &(padbinds.kick));
+
+	pgui_label_create(8, 16 + label_offset + (graphics_v_spacing * 3), 96, 16, "Grind:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	gamepad_page.grind = build_button_combobox(actions_groupbox->w - 8 - box_width, 16 + (graphics_v_spacing * 3), box_width, 20, actions_groupbox, &(padbinds.grind));
+
+	pgui_label_create(8, 16 + label_offset + (graphics_v_spacing * 4), 96, 16, "Spin Left:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	gamepad_page.spin_left = build_button_combobox(actions_groupbox->w - 8 - box_width, 16 + (graphics_v_spacing * 4), box_width, 20, actions_groupbox, &(padbinds.leftSpin));
+
+	pgui_label_create(8, 16 + label_offset + (graphics_v_spacing * 5), 96, 16, "Spin Right:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	gamepad_page.spin_right = build_button_combobox(actions_groupbox->w - 8 - box_width, 16 + (graphics_v_spacing * 5), box_width, 20, actions_groupbox, &(padbinds.rightSpin));
+
+	pgui_label_create(8, 16 + label_offset + (graphics_v_spacing * 6), 96, 16, "Nollie:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	gamepad_page.nollie = build_button_combobox(actions_groupbox->w - 8 - box_width, 16 + (graphics_v_spacing * 6), box_width, 20, actions_groupbox, &(padbinds.nollie));
+
+	pgui_label_create(8, 16 + label_offset + (graphics_v_spacing * 7), 96, 16, "Switch:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	gamepad_page.switch_revert = build_button_combobox(actions_groupbox->w - 8 - box_width, 16 + (graphics_v_spacing * 7), box_width, 20, actions_groupbox, &(padbinds.switchRevert));
+
+	pgui_label_create(8, 16 + label_offset + (graphics_v_spacing * 8), 96, 16, "Pause:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	gamepad_page.pause = build_button_combobox(actions_groupbox->w - 8 - box_width, 16 + (graphics_v_spacing * 8), box_width, 20, actions_groupbox, &(padbinds.menu));
+
+	// skater controls
+	pgui_label_create(8, 16 + label_offset, 96, 16, "Forward:", PGUI_LABEL_JUSTIFY_LEFT, skater_groupbox);
+	gamepad_page.forward = build_button_combobox(skater_groupbox->w - 8 - box_width, 16, box_width, 20, skater_groupbox, &(padbinds.up));
+
+	pgui_label_create(8, 16 + label_offset + (skater_v_spacing), 96, 16, "Backward:", PGUI_LABEL_JUSTIFY_LEFT, skater_groupbox);
+	gamepad_page.backward = build_button_combobox(skater_groupbox->w - 8 - box_width, 16 + (skater_v_spacing), box_width, 20, skater_groupbox, &(padbinds.down));
+
+	pgui_label_create(8, 16 + label_offset + (skater_v_spacing * 2), 96, 16, "Left:", PGUI_LABEL_JUSTIFY_LEFT, skater_groupbox);
+	gamepad_page.left = build_button_combobox(skater_groupbox->w - 8 - box_width, 16 + (skater_v_spacing * 2), box_width, 20, skater_groupbox, &(padbinds.left));
+
+	pgui_label_create(8, 16 + label_offset + (skater_v_spacing * 3), 96, 16, "Right:", PGUI_LABEL_JUSTIFY_LEFT, skater_groupbox);
+	gamepad_page.right = build_button_combobox(skater_groupbox->w - 8 - box_width, 16 + (skater_v_spacing * 3), box_width, 20, skater_groupbox, &(padbinds.right));
+
+	pgui_label_create(8, 16 + label_offset + (skater_v_spacing * 4), 96, 16, "Move Stick:", PGUI_LABEL_JUSTIFY_LEFT, skater_groupbox);
+	gamepad_page.movement_stick = build_stick_combobox(skater_groupbox->w - 8 - box_width, 16 + (skater_v_spacing * 4), box_width, 20, skater_groupbox, &(padbinds.movement));
+
+	// camera controls
+	pgui_label_create(8, 16 + label_offset, 96, 16, "Camera Stick:", PGUI_LABEL_JUSTIFY_LEFT, camera_groupbox);
+	gamepad_page.camera_stick = build_stick_combobox(skater_groupbox->w - 8 - box_width, 16, box_width, 20, camera_groupbox, &(padbinds.camera));
+
+	pgui_label_create(8, 16 + label_offset + (camera_v_spacing), 96, 16, "View Toggle:", PGUI_LABEL_JUSTIFY_LEFT, camera_groupbox);
+	gamepad_page.view_toggle = build_button_combobox(skater_groupbox->w - 8 - box_width, 16 + (camera_v_spacing), box_width, 20, camera_groupbox, &(padbinds.cameraToggle));
+
+	pgui_label_create(8, 16 + label_offset + (camera_v_spacing * 2), 96, 16, "Swivel Lock:", PGUI_LABEL_JUSTIFY_LEFT, camera_groupbox);
+	gamepad_page.swivel_lock = build_button_combobox(skater_groupbox->w - 8 - box_width, 16 + (camera_v_spacing * 2), box_width, 20, camera_groupbox, &(padbinds.cameraSwivelLock));
 }
 
 void setAllPadBindText() {
-	setButtonBindBox(gamepadPage.ollieBox, padbinds.ollie);
-	setButtonBindBox(gamepadPage.grabBox, padbinds.grab);
-	setButtonBindBox(gamepadPage.flipBox, padbinds.kick);
-	setButtonBindBox(gamepadPage.grindBox, padbinds.grind);
-	setButtonBindBox(gamepadPage.spinLBox, padbinds.leftSpin);
-	setButtonBindBox(gamepadPage.spinRBox, padbinds.rightSpin);
-	setButtonBindBox(gamepadPage.nollieBox, padbinds.nollie);
-	setButtonBindBox(gamepadPage.switchBox, padbinds.switchRevert);
-	setButtonBindBox(gamepadPage.pauseBox, padbinds.menu);
+	setButtonBindBox(gamepad_page.ollie, padbinds.ollie);
+	setButtonBindBox(gamepad_page.grab, padbinds.grab);
+	setButtonBindBox(gamepad_page.flip, padbinds.kick);
+	setButtonBindBox(gamepad_page.grind, padbinds.grind);
+	setButtonBindBox(gamepad_page.spin_left, padbinds.leftSpin);
+	setButtonBindBox(gamepad_page.spin_right, padbinds.rightSpin);
+	setButtonBindBox(gamepad_page.nollie, padbinds.nollie);
+	setButtonBindBox(gamepad_page.switch_revert, padbinds.switchRevert);
+	setButtonBindBox(gamepad_page.pause, padbinds.menu);
 
-	setButtonBindBox(gamepadPage.forwardBox, padbinds.up);
-	setButtonBindBox(gamepadPage.backwardBox, padbinds.down);
-	setButtonBindBox(gamepadPage.leftBox, padbinds.left);
-	setButtonBindBox(gamepadPage.rightBox, padbinds.right);
-	setStickBindBox(gamepadPage.moveStickBox, padbinds.movement);
+	setButtonBindBox(gamepad_page.forward, padbinds.up);
+	setButtonBindBox(gamepad_page.backward, padbinds.down);
+	setButtonBindBox(gamepad_page.left, padbinds.left);
+	setButtonBindBox(gamepad_page.right, padbinds.right);
+	setStickBindBox(gamepad_page.movement_stick, padbinds.movement);
 
-	setStickBindBox(gamepadPage.camStickBox, padbinds.camera);
-	setButtonBindBox(gamepadPage.viewToggleBox, padbinds.cameraToggle);
-	setButtonBindBox(gamepadPage.swivelLockBox, padbinds.cameraSwivelLock);
+	setStickBindBox(gamepad_page.camera_stick, padbinds.camera);
+	setButtonBindBox(gamepad_page.view_toggle, padbinds.cameraToggle);
+	setButtonBindBox(gamepad_page.swivel_lock, padbinds.cameraSwivelLock);
 }
 
-controllerButton buttonLUT[] = {
-	CONTROLLER_UNBOUND,
-	CONTROLLER_BUTTON_A,
-	CONTROLLER_BUTTON_B,
-	CONTROLLER_BUTTON_X,
-	CONTROLLER_BUTTON_Y,
-	CONTROLLER_BUTTON_DPAD_UP,
-	CONTROLLER_BUTTON_DPAD_DOWN,
-	CONTROLLER_BUTTON_DPAD_LEFT,
-	CONTROLLER_BUTTON_DPAD_RIGHT,
-	CONTROLLER_BUTTON_LEFTSHOULDER,
-	CONTROLLER_BUTTON_RIGHTSHOULDER,
-	CONTROLLER_BUTTON_LEFTTRIGGER,
-	CONTROLLER_BUTTON_RIGHTTRIGGER,
-	CONTROLLER_BUTTON_LEFTSTICK,
-	CONTROLLER_BUTTON_RIGHTSTICK,
-	CONTROLLER_BUTTON_BACK,
-	CONTROLLER_BUTTON_START,
-	CONTROLLER_BUTTON_TOUCHPAD,
-	CONTROLLER_BUTTON_PADDLE1,
-	CONTROLLER_BUTTON_PADDLE2,
-	CONTROLLER_BUTTON_PADDLE3,
-	CONTROLLER_BUTTON_PADDLE4,
+struct keyboard_page {
+	pgui_control *ollie;
+	pgui_control *grab;
+	pgui_control *flip;
+	pgui_control *grind;
+	pgui_control *spin_left;
+	pgui_control *spin_right;
+	pgui_control *nollie;
+	pgui_control *switch_revert;
+	pgui_control *pause;
+
+	pgui_control *forward;
+	pgui_control *backward;
+	pgui_control *left;
+	pgui_control *right;
+
+	pgui_control *camera_up;
+	pgui_control *camera_down;
+	pgui_control *camera_left;
+	pgui_control *camera_right;
+	pgui_control *view_toggle;
+	pgui_control *swivel_lock;
 };
 
-controllerButton stickLUT[] = {
-	CONTROLLER_STICK_UNBOUND,
-	CONTROLLER_STICK_LEFT,
-	CONTROLLER_STICK_RIGHT,
+struct keyboard_page keyboard_page;
+
+typedef struct {
+	SDL_Scancode *target;
+	char *name;
+} keybind_data;
+
+void do_keybind_select(pgui_control *control, keybind_data *data) {
+	doKeyBind(data->name, data->target, control);
+}
+
+pgui_control *build_keybind_textbox(int x, int y, int w, int h, pgui_control *parent, char *name, SDL_Scancode *target) {
+	pgui_control *result = pgui_textbox_create(x, y, w, h, "", parent);
+
+	keybind_data *data = malloc(sizeof(keybind_data));
+	data->name = name;
+	data->target = target;
+
+	pgui_textbox_set_on_focus_gained(result, do_keybind_select, data);
+
+	return result;
+}
+
+void build_keyboard_page(pgui_control *parent) {
+	pgui_control *actions_groupbox = pgui_groupbox_create(8, 8, (parent->w / 2) - 8 - 4, (parent->h) - 8 - 8, "Actions", parent);
+	pgui_control *skater_groupbox = pgui_groupbox_create((parent->w / 2) + 4, 8, (parent->w / 2) - 8 - 4, (parent->h / 2) - 8 - 4 - 32, "Skater Controls", parent);
+	pgui_control *camera_groupbox = pgui_groupbox_create((parent->w / 2) + 4, (parent->h / 2) + 4 - 32, (parent->w / 2) - 8 - 4, (parent->h / 2) - 8 - 4 + 32, "Camera Controls", parent);
+
+	int label_offset = 4;
+	int actions_v_spacing = 39;
+	int skater_v_spacing = 32;
+	int camera_v_spacing = 32;
+
+	// actions
+
+	pgui_label_create(8, 16 + label_offset, 96, 16, "Ollie:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	keyboard_page.ollie = build_keybind_textbox(actions_groupbox->w - 8 - 64, 16, 64, 20, actions_groupbox, "Ollie", &(keybinds.ollie));
+
+	pgui_label_create(8, 16 + label_offset + (actions_v_spacing), 96, 16, "Grab:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	keyboard_page.grab = build_keybind_textbox(actions_groupbox->w - 8 - 64, 16 + (actions_v_spacing), 64, 20, actions_groupbox, "Grab", &(keybinds.grab));
+
+	pgui_label_create(8, 16 + label_offset + (actions_v_spacing * 2), 96, 16, "Flip:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	keyboard_page.flip = build_keybind_textbox(actions_groupbox->w - 8 - 64, 16 + (actions_v_spacing * 2), 64, 20, actions_groupbox, "Flip", &(keybinds.flip));
+
+	pgui_label_create(8, 16 + label_offset + (actions_v_spacing * 3), 96, 16, "Grind:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	keyboard_page.grind = build_keybind_textbox(actions_groupbox->w - 8 - 64, 16 + (actions_v_spacing * 3), 64, 20, actions_groupbox, "Grind", &(keybinds.grind));
+
+	pgui_label_create(8, 16 + label_offset + (actions_v_spacing * 4), 96, 16, "Spin Left:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	keyboard_page.spin_left = build_keybind_textbox(actions_groupbox->w - 8 - 64, 16 + (actions_v_spacing * 4), 64, 20, actions_groupbox, "Spin Left", &(keybinds.spinLeft));
+
+	pgui_label_create(8, 16 + label_offset + (actions_v_spacing * 5), 96, 16, "Spin Right:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	keyboard_page.spin_right = build_keybind_textbox(actions_groupbox->w - 8 - 64, 16 + (actions_v_spacing * 5), 64, 20, actions_groupbox, "Spin Right", &(keybinds.spinRight));
+
+	pgui_label_create(8, 16 + label_offset + (actions_v_spacing * 6), 96, 16, "Nollie:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	keyboard_page.nollie = build_keybind_textbox(actions_groupbox->w - 8 - 64, 16 + (actions_v_spacing * 6), 64, 20, actions_groupbox, "Nollie", &(keybinds.nollie));
+
+	pgui_label_create(8, 16 + label_offset + (actions_v_spacing * 7), 96, 16, "Switch:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	keyboard_page.switch_revert = build_keybind_textbox(actions_groupbox->w - 8 - 64, 16 + (actions_v_spacing * 7), 64, 20, actions_groupbox, "Switch", &(keybinds.switchRevert));
+
+	pgui_label_create(8, 16 + label_offset + (actions_v_spacing * 8), 96, 16, "Pause:", PGUI_LABEL_JUSTIFY_LEFT, actions_groupbox);
+	keyboard_page.pause = build_keybind_textbox(actions_groupbox->w - 8 - 64, 16 + (actions_v_spacing * 8), 64, 20, actions_groupbox, "Pause", &(keybinds.pause));
+
+	// skater controls
+	pgui_label_create(8, 16 + label_offset, 96, 16, "Forward:", PGUI_LABEL_JUSTIFY_LEFT, skater_groupbox);
+	keyboard_page.forward = build_keybind_textbox(skater_groupbox->w - 8 - 64, 16, 64, 20, skater_groupbox, "Forward", &(keybinds.forward));
+
+	pgui_label_create(8, 16 + label_offset + (skater_v_spacing), 96, 16, "Backward:", PGUI_LABEL_JUSTIFY_LEFT, skater_groupbox);
+	keyboard_page.backward = build_keybind_textbox(skater_groupbox->w - 8 - 64, 16 + (skater_v_spacing), 64, 20, skater_groupbox, "Backward", &(keybinds.backward));
+
+	pgui_label_create(8, 16 + label_offset + (skater_v_spacing * 2), 96, 16, "Left:", PGUI_LABEL_JUSTIFY_LEFT, skater_groupbox);
+	keyboard_page.left = build_keybind_textbox(skater_groupbox->w - 8 - 64, 16 + (skater_v_spacing * 2), 64, 20, skater_groupbox, "Left", &(keybinds.left));
+
+	pgui_label_create(8, 16 + label_offset + (skater_v_spacing * 3), 96, 16, "Right:", PGUI_LABEL_JUSTIFY_LEFT, skater_groupbox);
+	keyboard_page.right = build_keybind_textbox(skater_groupbox->w - 8 - 64, 16 + (skater_v_spacing * 3), 64, 20, skater_groupbox, "Right", &(keybinds.right));
+
+	// camera controls
+	pgui_label_create(8, 16 + label_offset, 96, 16, "Camera Up:", PGUI_LABEL_JUSTIFY_LEFT, camera_groupbox);
+	keyboard_page.camera_up = build_keybind_textbox(skater_groupbox->w - 8 - 64, 16, 64, 20, camera_groupbox, "Camera Up", &(keybinds.camUp));
+
+	pgui_label_create(8, 16 + label_offset + (camera_v_spacing), 96, 16, "Camera Down:", PGUI_LABEL_JUSTIFY_LEFT, camera_groupbox);
+	keyboard_page.camera_down = build_keybind_textbox(skater_groupbox->w - 8 - 64, 16 + (camera_v_spacing), 64, 20, camera_groupbox, "Camera Down", &(keybinds.camDown));
+
+	pgui_label_create(8, 16 + label_offset + (camera_v_spacing * 2), 96, 16, "Camera Left:", PGUI_LABEL_JUSTIFY_LEFT, camera_groupbox);
+	keyboard_page.camera_left = build_keybind_textbox(skater_groupbox->w - 8 - 64, 16 + (camera_v_spacing * 2), 64, 20, camera_groupbox, "Camera Left", &(keybinds.camLeft));
+
+	pgui_label_create(8, 16 + label_offset + (camera_v_spacing * 3), 96, 16, "Camera Right:", PGUI_LABEL_JUSTIFY_LEFT, camera_groupbox);
+	keyboard_page.camera_right = build_keybind_textbox(skater_groupbox->w - 8 - 64, 16 + (camera_v_spacing * 3), 64, 20, camera_groupbox, "Camera Right", &(keybinds.camRight));
+
+	pgui_label_create(8, 16 + label_offset + (camera_v_spacing * 4), 96, 16, "View Toggle:", PGUI_LABEL_JUSTIFY_LEFT, camera_groupbox);
+	keyboard_page.view_toggle = build_keybind_textbox(skater_groupbox->w - 8 - 64, 16 + (camera_v_spacing * 4), 64, 20, camera_groupbox, "View Toggle", &(keybinds.viewToggle));
+
+	pgui_label_create(8, 16 + label_offset + (camera_v_spacing * 5), 96, 16, "Swivel Lock:", PGUI_LABEL_JUSTIFY_LEFT, camera_groupbox);
+	keyboard_page.swivel_lock = build_keybind_textbox(skater_groupbox->w - 8 - 64, 16 + (camera_v_spacing * 5), 64, 20, camera_groupbox, "Swivel Lock", &(keybinds.swivelLock));
+}
+
+void setAllBindText() {
+	setBindText(keyboard_page.ollie, keybinds.ollie);
+	setBindText(keyboard_page.grab, keybinds.grab);
+	setBindText(keyboard_page.flip, keybinds.flip);
+	setBindText(keyboard_page.grind, keybinds.grind);
+	setBindText(keyboard_page.spin_left, keybinds.spinLeft);
+	setBindText(keyboard_page.spin_right, keybinds.spinRight);
+	setBindText(keyboard_page.nollie, keybinds.nollie);
+	setBindText(keyboard_page.switch_revert, keybinds.switchRevert);
+	setBindText(keyboard_page.pause, keybinds.pause);
+
+	setBindText(keyboard_page.forward, keybinds.forward);
+	setBindText(keyboard_page.backward, keybinds.backward);
+	setBindText(keyboard_page.left, keybinds.left);
+	setBindText(keyboard_page.right, keybinds.right);
+
+	setBindText(keyboard_page.camera_up, keybinds.camUp);
+	setBindText(keyboard_page.camera_down, keybinds.camDown);
+	setBindText(keyboard_page.camera_left, keybinds.camLeft);
+	setBindText(keyboard_page.camera_right, keybinds.camRight);
+	setBindText(keyboard_page.view_toggle, keybinds.viewToggle);
+	setBindText(keyboard_page.swivel_lock, keybinds.swivelLock);
+}
+
+struct general_page {
+	pgui_control *resolution_combobox;
+	pgui_control *custom_resolution;
+	pgui_control *custom_res_x_label;
+	pgui_control *custom_res_x;
+	pgui_control *custom_res_y_label;
+	pgui_control *custom_res_y;
+
+	pgui_control *windowed;
+	pgui_control *borderless;
+
+	pgui_control *shadows;
+	pgui_control *particles;
+	pgui_control *animating_textures;
+	pgui_control *distance_fog;
+	pgui_control *low_detail_models;
+
+	pgui_control *play_intro;
+	pgui_control *il_mode;
+	pgui_control *disable_trick_limit;
 };
 
-LRESULT CALLBACK gamepadPageProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	switch (uMsg) {
-		case WM_COMMAND: {
-			int controlId = LOWORD(wParam);
-			int controlCode = HIWORD(wParam);
+struct general_page general_page;
 
-			if (controlCode == 1) {
-				int idx = ComboBox_GetCurSel(lParam);
+void check_custom_resolution(pgui_control *control, int value, void *data) {
+	if (value) {
+		pgui_label_set_enabled(general_page.custom_res_x_label, 1);
+		pgui_textbox_set_enabled(general_page.custom_res_x, 1);
+		pgui_label_set_enabled(general_page.custom_res_y_label, 1);
+		pgui_textbox_set_enabled(general_page.custom_res_y, 1);
+		pgui_combobox_set_enabled(general_page.resolution_combobox, 0);
 
-				switch (controlId) {
-					case COMBOBOX_OLLIE:
-						padbinds.ollie = buttonLUT[idx];
-						break;
-					case COMBOBOX_GRAB:
-						padbinds.grab = buttonLUT[idx];
-						break;
-					case COMBOBOX_FLIP:
-						padbinds.kick = buttonLUT[idx];
-						break;
-					case COMBOBOX_GRIND:
-						padbinds.grind = buttonLUT[idx];
-						break;
-					case COMBOBOX_SPINL:
-						padbinds.leftSpin = buttonLUT[idx];
-						break;
-					case COMBOBOX_SPINR:
-						padbinds.rightSpin = buttonLUT[idx];
-						break;
-					case COMBOBOX_NOLLIE:
-						padbinds.nollie = buttonLUT[idx];
-						break;
-					case COMBOBOX_SWITCH:
-						padbinds.switchRevert = buttonLUT[idx];
-						break;
-					case COMBOBOX_PAUSE:
-						padbinds.menu = buttonLUT[idx];
-						break;
-					case COMBOBOX_FORWARD:
-						padbinds.up = buttonLUT[idx];
-						break;
-					case COMBOBOX_BACKWARD:
-						padbinds.down = buttonLUT[idx];
-						break;
-					case COMBOBOX_LEFT:
-						padbinds.left = buttonLUT[idx];
-						break;
-					case COMBOBOX_RIGHT:
-						padbinds.right = buttonLUT[idx];
-						break;
-					case COMBOBOX_MOVESTICK:
-						padbinds.movement = stickLUT[idx];
-						break;
-					case COMBOBOX_CAMSTICK:
-						padbinds.camera = stickLUT[idx];
-						break;
-					case COMBOBOX_VIEWTOGGLE:
-						padbinds.cameraToggle = buttonLUT[idx];
-						break;
-					case COMBOBOX_SWIVELLOCK:
-						padbinds.cameraSwivelLock = buttonLUT[idx];
-						break;
-					default:
-						break;
-				}
+		char buf[16];
+		pgui_textbox_get_text(general_page.custom_res_x, buf, 16);
+		settings.resX = atoi(buf);
+
+		pgui_textbox_get_text(general_page.custom_res_y, buf, 16);
+		settings.resY = atoi(buf);
+	} else {
+		pgui_label_set_enabled(general_page.custom_res_x_label, 0);
+		pgui_textbox_set_enabled(general_page.custom_res_x, 0);
+		pgui_label_set_enabled(general_page.custom_res_y_label, 0);
+		pgui_textbox_set_enabled(general_page.custom_res_y, 0);
+		pgui_combobox_set_enabled(general_page.resolution_combobox, 1);
+
+		int res_value = pgui_combobox_get_selection(general_page.resolution_combobox);
+		if (res_value != 0) {
+			settings.resX = displayModeList[res_value - 1].width;
+			settings.resY = displayModeList[res_value - 1].height;
+		} else {
+			settings.resX = 0;
+			settings.resY = 0;
+		}
+	}
+}
+
+void set_display_mode(pgui_control *control, int value, void *data) {
+	if (value != 0) {
+		settings.resX = displayModeList[value - 1].width;
+		settings.resY = displayModeList[value - 1].height;
+	} else {
+		settings.resX = 0;
+		settings.resY = 0;
+	}
+}
+
+void do_custom_resolution_textbox(pgui_control *control, int *target) {
+	char buf[16];
+	pgui_textbox_get_text(control, buf, 16);
+	*target = atoi(buf);
+}
+
+void do_setting_checkbox(pgui_control *control, int value, int *target) {
+	*target = value;
+}
+
+void build_general_page(pgui_control *parent) {
+	initResolutionList();
+
+	pgui_control *resolution_groupbox = pgui_groupbox_create(8, 8, parent->w - 8 - 8, (parent->h / 2) - 8 - 4, "Resolution", parent);
+	pgui_control *graphics_groupbox = pgui_groupbox_create(8, (parent->h / 2) + 4, (parent->w / 2) - 8 - 4, (parent->h / 2) - 8 - 4, "Graphics", parent);
+	pgui_control *misc_groupbox = pgui_groupbox_create((parent->w / 2) + 4, (parent->h / 2) + 4, (parent->w / 2) - 8 - 4, (parent->h / 2) - 8 - 4, "Miscellaneous", parent);
+
+	// resolution options
+	general_page.resolution_combobox = pgui_combobox_create(8, 16, 160, 24, displayModeStringList, numDisplayModes + 1, resolution_groupbox);
+	general_page.custom_resolution = pgui_checkbox_create(8, 16 + 24, 128, 24, "Use Custom Resolution", resolution_groupbox);
+
+	general_page.custom_res_x_label = pgui_label_create(8 + 8, 16 + (24 * 2) + 4, 48, 24, "Width:", PGUI_LABEL_JUSTIFY_CENTER, resolution_groupbox);
+	general_page.custom_res_x = pgui_textbox_create(8 + 8 + 48, 16 + (24 * 2), 48, 20, "", resolution_groupbox);
+	general_page.custom_res_y_label = pgui_label_create(8 + 8 + (48 * 2), 16 + (24 * 2) + 4, 48, 24, "Height:", PGUI_LABEL_JUSTIFY_CENTER, resolution_groupbox);
+	general_page.custom_res_y = pgui_textbox_create(8 + 8 + (48 * 3), 16 + (24 * 2), 48, 20, "", resolution_groupbox);
+
+	general_page.windowed = pgui_checkbox_create(8, 16 + (24 * 3), 128, 24, "Windowed", resolution_groupbox);
+	general_page.borderless = pgui_checkbox_create(8, 16 + (24 * 4), 128, 24, "Borderless", resolution_groupbox);
+
+	// graphics options
+	general_page.shadows = pgui_checkbox_create(8, 16, 128, 24, "Shadows", graphics_groupbox);
+	general_page.particles = pgui_checkbox_create(8, 16 + 24, 128, 24, "Particles", graphics_groupbox);
+	general_page.animating_textures = pgui_checkbox_create(8, 16 + (24 * 2), 128, 24, "Animating Textures", graphics_groupbox);
+	general_page.distance_fog = pgui_checkbox_create(8, 16 + (24 * 3), 160, 24, "Distance Fog", graphics_groupbox);
+	general_page.low_detail_models = pgui_checkbox_create(8, 16 + (24 * 4), 160, 24, "Low Detail Models", graphics_groupbox);
+
+	// miscellaneous options
+	general_page.play_intro = pgui_checkbox_create(8, 16, 128, 24, "Always Play Intro", misc_groupbox);
+	general_page.il_mode = pgui_checkbox_create(8, 16 + 24, 128, 24, "IL Mode*", misc_groupbox);
+	general_page.disable_trick_limit = pgui_checkbox_create(8, 16 + (24 * 2), 128, 24, "Disable Trick Limit**", misc_groupbox);
+	pgui_label_create(8, misc_groupbox->h - 8 - 80, 160, 48, "*For speedrun practice.  Resets goals when a level is retried to practice a single level", PGUI_LABEL_JUSTIFY_LEFT, misc_groupbox);
+	pgui_label_create(8, misc_groupbox->h - 8 - 32, 160, 32, "**For scoring. Removes the cap at 251x combo.", PGUI_LABEL_JUSTIFY_LEFT, misc_groupbox);
+
+	pgui_checkbox_set_on_toggle(general_page.windowed, do_setting_checkbox, &(settings.windowed));
+	pgui_checkbox_set_on_toggle(general_page.borderless, do_setting_checkbox, &(settings.borderless));
+
+	pgui_checkbox_set_on_toggle(general_page.shadows, do_setting_checkbox, &(settings.shadows));
+	pgui_checkbox_set_on_toggle(general_page.particles, do_setting_checkbox, &(settings.particles));
+	pgui_checkbox_set_on_toggle(general_page.animating_textures, do_setting_checkbox, &(settings.animating_textures));
+	pgui_checkbox_set_on_toggle(general_page.distance_fog, do_setting_checkbox, &(settings.distance_fog));
+	pgui_checkbox_set_on_toggle(general_page.low_detail_models, do_setting_checkbox, &(settings.low_detail_models));
+
+	pgui_checkbox_set_on_toggle(general_page.play_intro, do_setting_checkbox, &(settings.play_intro));
+	pgui_checkbox_set_on_toggle(general_page.il_mode, do_setting_checkbox, &(settings.il_mode));
+	pgui_checkbox_set_on_toggle(general_page.disable_trick_limit, do_setting_checkbox, &(settings.disable_trick_limit));
+
+	pgui_combobox_set_on_select(general_page.resolution_combobox, set_display_mode, NULL);
+	pgui_checkbox_set_on_toggle(general_page.custom_resolution, check_custom_resolution, NULL);
+	pgui_textbox_set_on_focus_lost(general_page.custom_res_x, do_custom_resolution_textbox, &(settings.resX));
+	pgui_textbox_set_on_focus_lost(general_page.custom_res_y, do_custom_resolution_textbox, &(settings.resY));
+}
+
+void update_general_page() {
+	// find resolution in list
+	int foundResolution = 0;
+	if (settings.resX == 0 && settings.resY == 0) {
+		foundResolution = 1;
+
+		pgui_combobox_set_selection(general_page.resolution_combobox, 0);
+
+		pgui_checkbox_set_checked(general_page.custom_resolution, 0);
+		pgui_combobox_set_enabled(general_page.resolution_combobox, 1);
+		pgui_label_set_enabled(general_page.custom_res_x_label, 0);
+		pgui_textbox_set_enabled(general_page.custom_res_x, 0);
+		pgui_label_set_enabled(general_page.custom_res_y_label, 0);
+		pgui_textbox_set_enabled(general_page.custom_res_y, 0);
+	} else {
+		for (int i = 0; i < numDisplayModes; i++) {
+			if (displayModeList[i].width == settings.resX && displayModeList[i].height == settings.resY) {
+				foundResolution = 1;
+				pgui_combobox_set_selection(general_page.resolution_combobox, i + 1);
+
+				pgui_checkbox_set_checked(general_page.custom_resolution, 0);
+				pgui_combobox_set_enabled(general_page.resolution_combobox, 1);
+				pgui_label_set_enabled(general_page.custom_res_x_label, 0);
+				pgui_textbox_set_enabled(general_page.custom_res_x, 0);
+				pgui_label_set_enabled(general_page.custom_res_y_label, 0);
+				pgui_textbox_set_enabled(general_page.custom_res_y, 0);
+
+				break;
 			}
-		
-
-			return 0;
 		}
 	}
 
+	if (!foundResolution) {
+		char buf[16];
+		itoa(settings.resX, buf, 10);
+		pgui_textbox_set_text(general_page.custom_res_x, buf);
+		itoa(settings.resY, buf, 10);
+		pgui_textbox_set_text(general_page.custom_res_y, buf);
 
-	return DefWindowProc(hwnd, uMsg, wParam, lParam);
-}
-
-HWND createButtonCombobox(int x, int y, int w, int h, HWND parent, int id, HINSTANCE hinst) {
-	HWND result = CreateWindow(WC_COMBOBOX, "", WS_TABSTOP | WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST, x, y, w, h, parent, id, hinst, NULL);
-	SendMessage(result, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	ComboBox_AddString(result, "Unbound");
-	ComboBox_AddString(result, "A");
-	ComboBox_AddString(result, "B");
-	ComboBox_AddString(result, "X");
-	ComboBox_AddString(result, "Y");
-	ComboBox_AddString(result, "D-Pad Up");
-	ComboBox_AddString(result, "D-Pad Down");
-	ComboBox_AddString(result, "D-Pad Left");
-	ComboBox_AddString(result, "D-Pad Right");
-	ComboBox_AddString(result, "L1/Left Bumper");
-	ComboBox_AddString(result, "R1/Right Bumper");
-	ComboBox_AddString(result, "L2/Left Trigger");
-	ComboBox_AddString(result, "R2/Right Trigger");
-	ComboBox_AddString(result, "L3/Left Stick");
-	ComboBox_AddString(result, "R3/Right Stick");
-	ComboBox_AddString(result, "Select/Back");
-	ComboBox_AddString(result, "Start/Options");
-	ComboBox_AddString(result, "Touchpad");
-	ComboBox_AddString(result, "Paddle 1");
-	ComboBox_AddString(result, "Paddle 2");
-	ComboBox_AddString(result, "Paddle 3");
-	ComboBox_AddString(result, "Paddle 4");
-
-	ComboBox_SetCurSel(result, 0);
-
-	return result;
-}
-
-HWND createStickCombobox(int x, int y, int w, int h, HWND parent, HMENU menu, HINSTANCE hinst) {
-	HWND result = CreateWindow(WC_COMBOBOX, "", WS_TABSTOP | WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST, x, y, w, h, parent, menu, hinst, NULL);
-	SendMessage(result, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	ComboBox_AddString(result, "Unbound");
-	ComboBox_AddString(result, "Left Stick");
-	ComboBox_AddString(result, "Right Stick");
-
-	ComboBox_SetCurSel(result, 0);
-
-	return result;
-}
-
-HWND createGamepadPage(HWND parent, HINSTANCE hinst, RECT rect) {
-	// TODO: create struct here
-	//HWND result = CreateWindow(WC_STATIC, L"", WS_CHILD | WS_VISIBLE, rect.left, rect.top, rect.right, rect.bottom, parent, NULL, hinst, NULL);
-
-	const char *className  = "Gamepad Page Class";
-
-	WNDCLASS wc = { 0,
-		gamepadPageProc,
-		0,
-		0,
-		hinst,
-		NULL,
-		NULL,
-		NULL,
-		NULL,
-		className
-	};
-
-	RegisterClass(&wc);
-
-	HWND result = CreateWindow(className, L"", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top, parent, NULL, hinst, NULL);
-	// TODO: add handler that destroys struct
-
-	RECT pageRect;
-	GetClientRect(result, &pageRect);
-
-	int pageWidth = pageRect.right - pageRect.left;
-	int pageHeight = pageRect.bottom - pageRect.top;
-
-	// SKATER BOX
-	int resolutionGroupX = 8;
-	int resolutionGroupY = 8;
-	int boxHeight = 20;
-	int labelHPos = resolutionGroupX + 8;
-	int boxHPos = resolutionGroupX + ((pageWidth / 2) - 16 - 8 - 64);
-	int boxVSpacing = 32;
-
-	gamepadPage.actionGroup = CreateWindow(WC_BUTTON, "Actions", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_GROUPBOX, resolutionGroupX, resolutionGroupY, (pageWidth / 2) - 16, pageHeight - 16, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.actionGroup, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	gamepadPage.ollieLabel = CreateWindow(WC_STATIC, "Ollie:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16, 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.ollieLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.ollieBox = createButtonCombobox(boxHPos, resolutionGroupY + 16, 64, boxHeight, result, (HMENU)COMBOBOX_OLLIE, hinst);
-	gamepadPage.grabLabel = CreateWindow(WC_STATIC, "Grab:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 1), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.grabLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.grabBox = createButtonCombobox(boxHPos, resolutionGroupY + 16 + (boxVSpacing * 1), 64, boxHeight, result, (HMENU)COMBOBOX_GRAB, hinst);
-	gamepadPage.flipLabel = CreateWindow(WC_STATIC, "Flip:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 2), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.flipLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.flipBox = createButtonCombobox(boxHPos, resolutionGroupY + 16 + (boxVSpacing * 2), 64, boxHeight, result, (HMENU)COMBOBOX_FLIP, hinst);
-	gamepadPage.grindLabel = CreateWindow(WC_STATIC, "Grind:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 3), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.grindLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.grindBox = createButtonCombobox(boxHPos, resolutionGroupY + 16 + (boxVSpacing * 3), 64, boxHeight, result, (HMENU)COMBOBOX_GRIND, hinst);
-	gamepadPage.spinLLabel = CreateWindow(WC_STATIC, "Spin Left:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 4), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.spinLLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.spinLBox = createButtonCombobox(boxHPos, resolutionGroupY + 16 + (boxVSpacing * 4), 64, boxHeight, result, (HMENU)COMBOBOX_SPINL, hinst);
-	gamepadPage.spinRLabel = CreateWindow(WC_STATIC, "Spin Right:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 5), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.spinRLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.spinRBox = createButtonCombobox(boxHPos, resolutionGroupY + 16 + (boxVSpacing * 5), 64, boxHeight, result, (HMENU)COMBOBOX_SPINR, hinst);
-	gamepadPage.nollieLabel = CreateWindow(WC_STATIC, "Nollie:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 6), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.nollieLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.nollieBox = createButtonCombobox(boxHPos, resolutionGroupY + 16 + (boxVSpacing * 6), 64, boxHeight, result, (HMENU)COMBOBOX_NOLLIE, hinst);
-	gamepadPage.switchLabel = CreateWindow(WC_STATIC, "Switch:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 7), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.switchLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.switchBox = createButtonCombobox(boxHPos, resolutionGroupY + 16 + (boxVSpacing * 7), 64, boxHeight, result, (HMENU)COMBOBOX_SWITCH, hinst);
-	SendMessage(gamepadPage.switchBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.pauseLabel = CreateWindow(WC_STATIC, "Pause:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, resolutionGroupY + 16 + (boxVSpacing * 8), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.pauseLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.pauseBox = createButtonCombobox(boxHPos, resolutionGroupY + 16 + (boxVSpacing * 8), 64, boxHeight, result, (HMENU)COMBOBOX_PAUSE, hinst);
-
-	SetWindowPos(gamepadPage.actionGroup, gamepadPage.pauseBox, resolutionGroupX, resolutionGroupY, pageWidth - 16, (pageHeight / 2) - 16, HWND_BOTTOM);
-
-	// CAMERA BOX
-	int graphicsGroupX = (pageWidth / 2) + 8;
-	int graphicsGroupY = 8;
-	labelHPos = graphicsGroupX + 8;
-	boxHPos = graphicsGroupX + ((pageWidth / 2) - 16 - 8 - 64);
-	boxVSpacing = 24;
-
-	gamepadPage.movementGroup = CreateWindowEx(WS_EX_CONTROLPARENT, WC_BUTTON, "Skater Controls", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_GROUPBOX, graphicsGroupX, graphicsGroupY, (pageWidth / 2) - 16, (pageHeight / 2) - 16, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.movementGroup, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	gamepadPage.forwardLabel = CreateWindow(WC_STATIC, "Forward:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, graphicsGroupY + 16, 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.forwardLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.forwardBox = createButtonCombobox(boxHPos, graphicsGroupY + 16, 64, boxHeight, result, (HMENU)COMBOBOX_FORWARD, hinst);
-	gamepadPage.backwardLabel = CreateWindow(WC_STATIC, "Backward:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, graphicsGroupY + 16 + (boxVSpacing * 1), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.backwardLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.backwardBox = createButtonCombobox(boxHPos, graphicsGroupY + 16 + (boxVSpacing * 1), 64, boxHeight, result, (HMENU)COMBOBOX_BACKWARD, hinst);
-	gamepadPage.leftLabel = CreateWindow(WC_STATIC, "Left:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, graphicsGroupY + 16 + (boxVSpacing * 2), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.leftLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.leftBox = createButtonCombobox(boxHPos, graphicsGroupY + 16 + (boxVSpacing * 2), 64, boxHeight, result, (HMENU)COMBOBOX_LEFT, hinst);
-	gamepadPage.rightLabel = CreateWindow(WC_STATIC, "Right:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, graphicsGroupY + 16 + (boxVSpacing * 3), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.rightLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.rightBox = createButtonCombobox(boxHPos, graphicsGroupY + 16 + (boxVSpacing * 3), 64, boxHeight, result, (HMENU)COMBOBOX_RIGHT, hinst);
-	gamepadPage.moveStickLabel = CreateWindow(WC_STATIC, "Move Stick:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, graphicsGroupY + 16 + (boxVSpacing * 4), 64, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.moveStickLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.moveStickBox = createStickCombobox(boxHPos, graphicsGroupY + 16 + (boxVSpacing * 4), 64, boxHeight, result, (HMENU)COMBOBOX_MOVESTICK, hinst);
-
-	SetWindowPos(gamepadPage.movementGroup, gamepadPage.moveStickBox, graphicsGroupX, graphicsGroupY, (pageWidth / 2) - 16, (pageHeight / 2) - 16, HWND_BOTTOM);
-
-	// MISC BOX
-	int miscGroupX = (pageWidth / 2) + 8;
-	int miscGroupY = (pageHeight / 2) + 8;
-	gamepadPage.cameraGroup = CreateWindowEx(WS_EX_CONTROLPARENT, WC_BUTTON, "Camera Controls", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_GROUPBOX, miscGroupX, miscGroupY, (pageWidth / 2) - 16, (pageHeight / 2) - 16, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.cameraGroup, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	gamepadPage.camStickLabel = CreateWindow(WC_STATIC, "Camera Stick:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, miscGroupY + 16, 80, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.camStickLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.camStickBox = createStickCombobox(boxHPos, miscGroupY + 16, 64, boxHeight, result, (HMENU)COMBOBOX_CAMSTICK, hinst);
-	SendMessage(gamepadPage.camStickBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.viewToggleLabel = CreateWindow(WC_STATIC, "View Toggle:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, miscGroupY + 16 + (boxVSpacing * 1), 80, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.viewToggleLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.viewToggleBox = createButtonCombobox(boxHPos, miscGroupY + 16 + (boxVSpacing * 1), 64, boxHeight, result, (HMENU)COMBOBOX_VIEWTOGGLE, hinst);
-	SendMessage(gamepadPage.viewToggleBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.swivelLockLabel = CreateWindow(WC_STATIC, "Swivel Lock:", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, labelHPos, miscGroupY + 16 + (boxVSpacing * 2), 80, boxHeight, result, NULL, hinst, NULL);
-	SendMessage(gamepadPage.swivelLockLabel, WM_SETFONT, (WPARAM)hfont, TRUE);
-	gamepadPage.swivelLockBox = createButtonCombobox(boxHPos, miscGroupY + 16 + (boxVSpacing * 2), 64, boxHeight, result, (HMENU)COMBOBOX_SWIVELLOCK, hinst);
-	SendMessage(gamepadPage.swivelLockBox, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	SetWindowPos(gamepadPage.cameraGroup, gamepadPage.swivelLockBox, miscGroupX, miscGroupY, (pageWidth / 2) - 16, (pageHeight / 2) - 16, HWND_BOTTOM);
-
-	gamepadPage.page = result;
-
-	return result;
-}
-
-HWND createTabs(HWND parent, HINSTANCE hinst) {
-	RECT wndRect;
-	HWND result;
-	
-	GetClientRect(parent, &wndRect);
-
-	wndRect.left += 8;
-	wndRect.right -= 8;
-	wndRect.top += 8 + 96;
-	wndRect.bottom -= 8 + 32;
-
-	result = CreateWindow(WC_TABCONTROL, L"", WS_CHILD | WS_CLIPSIBLINGS | WS_VISIBLE, wndRect.left, wndRect.top, wndRect.right - wndRect.left, wndRect.bottom - wndRect.top, parent, NULL, hinst, NULL);
-	SendMessage(result, WM_SETFONT, (WPARAM)hfont, TRUE);
-
-	TCITEM item;
-	item.mask = TCIF_TEXT | TCIF_IMAGE;
-	item.iImage = -1;
-	
-	item.pszText = "General";
-	TabCtrl_InsertItem(result, 0, &item);
-
-	item.pszText = "Keyboard";
-	TabCtrl_InsertItem(result, 1, &item);
-
-	item.pszText = "Gamepad";
-	TabCtrl_InsertItem(result, 2, &item);
-
-	RECT tabRect;
-
-	GetClientRect(result, &tabRect);
-
-	TabCtrl_AdjustRect(result, FALSE, &tabRect);
-
-	createSettingsPage(result, hinst, tabRect);
-	createKeyboardPage(result, hinst, tabRect);
-	createGamepadPage(result, hinst, tabRect);
-
-	SetWindowPos(result, gamepadPage.page, wndRect.left, wndRect.top, wndRect.right - wndRect.left, wndRect.bottom - wndRect.top, HWND_BOTTOM);
-
-	return result;
-}
-
-#define BUTTON_OK 0x8801
-#define BUTTON_CANCEL 0x8802
-#define BUTTON_DEFAULTS 0x8803
-
-HWND createButtons(HWND parent, HINSTANCE hinst) {
-	HWND result;
-
-	RECT wndRect;
-	GetClientRect(parent, &wndRect);
-
-	wndRect.left += 8;
-	wndRect.right -= 8;
-	wndRect.top = wndRect.bottom - 42 + 8;
-	wndRect.bottom -= 8;
-
-	HWND restoreDefaultButton = CreateWindow(WC_BUTTON, "Restore Defaults", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, wndRect.left, wndRect.top, 96, wndRect.bottom - wndRect.top, parent, BUTTON_DEFAULTS, hinst, NULL);
-	SendMessage(restoreDefaultButton, WM_SETFONT, (WPARAM)hfont, TRUE);
-	HWND cancelButton = CreateWindow(WC_BUTTON, "Cancel", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, wndRect.right - (80 * 2) - 8, wndRect.top, 80, wndRect.bottom - wndRect.top, parent, BUTTON_CANCEL, hinst, NULL);
-	SendMessage(cancelButton, WM_SETFONT, (WPARAM)hfont, TRUE);
-	HWND okButton = CreateWindow(WC_BUTTON, "OK", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON, wndRect.right - 80, wndRect.top, 80, wndRect.bottom - wndRect.top, parent, BUTTON_OK, hinst, NULL);
-	SendMessage(okButton, WM_SETFONT, (WPARAM)hfont, TRUE);
-}
-
-LOGBRUSH lbrBk;
-
-LRESULT CALLBACK wndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-	
-	switch (uMsg)
-	{
-	case WM_DESTROY:
-		PostQuitMessage(0);
-		return 0;
-
-	case WM_PAINT:
-		{
-			PAINTSTRUCT ps;
-			HDC hdc = BeginPaint(hwnd, &ps);
-
-			// All painting occurs here, between BeginPaint and EndPaint.
-
-			FillRect(hdc, &ps.rcPaint, (HBRUSH) (COLOR_WINDOW));
-
-			EndPaint(hwnd, &ps);
-		}
-		return 0;
-
-	case WM_NOTIFY: {
-		//printf("NOTIFY!!! %x\n", ((LPNMHDR)lParam)->hwndFrom);
-		int code = ((LPNMHDR)lParam)->code;
-
-		if (code == TCN_SELCHANGE) {
-			//printf("WOW!!\n");
-			int tab = TabCtrl_GetCurSel(((LPNMHDR)lParam)->hwndFrom);
-			//printf("SELECTED TAB: %d\n", tab);
-			if (tab == 0) {
-				ShowWindow(settingsPage.page, SW_SHOW);
-				ShowWindow(keyboardPage.page, SW_HIDE);
-				ShowWindow(gamepadPage.page, SW_HIDE);
-			} else if (tab == 1) {
-				ShowWindow(settingsPage.page, SW_HIDE);
-				ShowWindow(keyboardPage.page, SW_SHOW);
-				ShowWindow(gamepadPage.page, SW_HIDE);
-			} else {
-				ShowWindow(settingsPage.page, SW_HIDE);
-				ShowWindow(keyboardPage.page, SW_HIDE);
-				ShowWindow(gamepadPage.page, SW_SHOW);
-			}
-
-
-		}
-
-		return 0;
-	}
-	case WM_COMMAND:
-		printf("COMMAND CHILD!!! LO: %d, HI: %d, L: %d\n", LOWORD(wParam), HIWORD(wParam), lParam);
-		int controlId = LOWORD(wParam);
-
-		if (controlId == BUTTON_OK) {
-			saveSettings();
-			PostQuitMessage(0);
-		} else if (controlId == BUTTON_CANCEL) {
-			PostQuitMessage(0);
-		} else if (controlId == BUTTON_DEFAULTS) {
-			defaultSettings();
-			updateSettingsPage();
-			setAllBindText();
-			setAllPadBindText();
-		}
-
-		return 0;
+		pgui_checkbox_set_checked(general_page.custom_resolution, 1);
+		pgui_combobox_set_enabled(general_page.resolution_combobox, 0);
+		pgui_label_set_enabled(general_page.custom_res_x_label, 1);
+		pgui_textbox_set_enabled(general_page.custom_res_x, 1);
+		pgui_label_set_enabled(general_page.custom_res_y_label, 1);
+		pgui_textbox_set_enabled(general_page.custom_res_y, 1);
 	}
 
-	return DefWindowProc(hwnd, uMsg, wParam, lParam);
+	pgui_checkbox_set_checked(general_page.windowed, settings.windowed);
+	pgui_checkbox_set_checked(general_page.borderless, settings.borderless);
+
+	pgui_checkbox_set_checked(general_page.shadows, settings.shadows);
+	pgui_checkbox_set_checked(general_page.particles, settings.particles);
+	pgui_checkbox_set_checked(general_page.animating_textures, settings.animating_textures);
+	pgui_checkbox_set_checked(general_page.distance_fog, settings.distance_fog);
+	pgui_checkbox_set_checked(general_page.low_detail_models, settings.low_detail_models);
+
+	pgui_checkbox_set_checked(general_page.play_intro, settings.play_intro);
+	pgui_checkbox_set_checked(general_page.il_mode, settings.il_mode);
+	pgui_checkbox_set_checked(general_page.disable_trick_limit, settings.disable_trick_limit);
+}
+
+void callback_ok(pgui_control *control, void *data) {
+	saveSettings();
+	PostQuitMessage(0);
+}
+
+void callback_cancel(pgui_control *control, void *data) {
+	PostQuitMessage(0);
+}
+
+void callback_default(pgui_control *control, void *data) {
+	defaultSettings();
+	update_general_page();
+	setAllBindText();
+	setAllPadBindText();
 }
 
 int main(int argc, char **argv) {
-	HINSTANCE hinst = GetModuleHandle(NULL);
+	cursedSDLSetup();
+	loadSettings();
 
-	INITCOMMONCONTROLSEX icex;
-	icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
-	icex.dwICC = ICC_TAB_CLASSES;
-	InitCommonControlsEx(&icex);
+	pgui_control *window = pgui_window_create(400, 450, "PARTYMOD Configuration");
 
-	DWORD dwDlgBase = GetDialogBaseUnits();
-	cxMargin = LOWORD(dwDlgBase) / 4; 
-	cyMargin = HIWORD(dwDlgBase) / 8; 
+	pgui_control *restore_default_button = pgui_button_create(8, window->h - 42 + 8, 96, 26, "Restore Defaults", window);
+	pgui_control *cancel_button = pgui_button_create(window->w - (88 * 2), window->h - 42 + 8, 80, 26, "Cancel", window);
+	pgui_control *ok_button = pgui_button_create(window->w - 88, window->h - 42 + 8, 80, 26, "OK", window);
 
-	LOGFONT lf;
-	GetObject (GetStockObject(DEFAULT_GUI_FONT), sizeof(LOGFONT), &lf); 
-	hfont = CreateFont (lf.lfHeight, lf.lfWidth, 
-		lf.lfEscapement, lf.lfOrientation, lf.lfWeight, 
-		lf.lfItalic, lf.lfUnderline, lf.lfStrikeOut, lf.lfCharSet, 
-		lf.lfOutPrecision, lf.lfClipPrecision, lf.lfQuality, 
-		lf.lfPitchAndFamily, lf.lfFaceName); 
+	pgui_button_set_on_press(restore_default_button, callback_default, NULL);
+	pgui_button_set_on_press(cancel_button, callback_cancel, NULL);
+	pgui_button_set_on_press(ok_button, callback_ok, NULL);
 
-	const wchar_t CLASS_NAME[]  = L"Config Window Class";
-
-	WNDCLASS wc = { 0,
-		wndProc,
-		0,
-		0,
-		hinst,
-		NULL,
-		NULL,
-		NULL,
-		NULL,
-		CLASS_NAME
+	char *tab_names[3] = {
+		"General",
+		"Keyboard",
+		"Gamepad",
 	};
 
-	RegisterClass(&wc);
+	pgui_control *tabs = pgui_tabs_create(8, 8, window->w - 16, window->h - 8 - 32 - 8, tab_names, 3, window);
 
-	windowHwnd = CreateWindow(CLASS_NAME, "PARTYMOD Configuration", WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, 400, 550, NULL, NULL, hinst, NULL);
-	SendMessage(windowHwnd, WM_SETFONT, (WPARAM)hfont, TRUE);
+	build_general_page(tabs->children[0]);
+	build_keyboard_page(tabs->children[1]);
+	build_gamepad_page(tabs->children[2]);
 
-	initResolutionList();
+	pgui_control_set_hidden(tabs->children[1], 1);	// bug workaround: controls don't check that the hierarchy is hidden when created, so let's just re-hide it
+	pgui_control_set_hidden(tabs->children[2], 1);	// bug workaround: controls don't check that the hierarchy is hidden when created, so let's just re-hide it
 
-	createTabs(windowHwnd, hinst);
-
-	createButtons(windowHwnd, hinst);
-
-	loadSettings();
-	updateSettingsPage();
-	cursedSDLSetup();
+	update_general_page();
 	setAllBindText();
 	setAllPadBindText();
-
-	ShowWindow(windowHwnd, SW_NORMAL);
+	
+	pgui_window_show(window);
 
 	// Run the message loop.
 
