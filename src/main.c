@@ -14,7 +14,7 @@
 
 #define VERSION_NUMBER_MAJOR 1
 #define VERSION_NUMBER_MINOR 1
-#define VERSION_NUMBER_PATCH 0
+#define VERSION_NUMBER_PATCH 1
 
 int __stdcall playIntroMovie(char *filename, int unk) {
 	void *(__stdcall *getMoviePlayer)(int) = (void *)0x00406d40;
@@ -279,6 +279,7 @@ uint8_t compLevels[] = {
 
 int oldLevel = 0;
 int oldProgress = 0;
+int retryCounter = 0;
 
 void retryHook() {
 	int (__cdecl *IsCareerMode)(void) = (void *)0x00421540;
@@ -292,6 +293,12 @@ void retryHook() {
 		
 		if (!compLevels[*level]) {
 			uint32_t *goals = (*career + 0x564 + ((*level - 1) * 8));
+			uint32_t *someflags = (*career + 0x5e4 + ((*level - 1) * 8));
+
+			//uint32_t *othergoalsquestion = (*career + 0x65c + ((*level + 1) * 4));
+
+			//printf("other goals? = 0x%08x\n", *othergoalsquestion);
+			*someflags = 0;
 
 			if (*level != oldLevel) {
 				oldLevel = *level;
@@ -303,6 +310,14 @@ void retryHook() {
 			}
 
 			*goals = 0;
+
+			retryCounter++;
+
+			if (retryCounter >= 10) {
+				retryCounter = 0;
+				//callFunc(0x004220c0);	// reload the level
+				//callFunc(0x00422880);	// reinsert skaters
+			}
 		}
 	}
 
@@ -311,6 +326,8 @@ void retryHook() {
 
 void loadRequestedLevelHook() {
 	int (__cdecl *IsCareerMode)(void) = (void *)0x00421540;
+
+	retryCounter = 0;
 
 	if (oldLevel != 0 && !compLevels[oldLevel]) {
 		// restore career progress
@@ -493,6 +510,10 @@ void patchNotCD() {
 	patchByte((void *)(0x00404350 + 5), 0xc3);
 }
 
+void patchPrintf() {
+	patchDWord((void *)0x0058d10c, printf);
+}
+
 __declspec(dllexport) BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
 	// Perform actions based on the reason for calling.
 	switch(fdwReason) { 
@@ -512,6 +533,7 @@ __declspec(dllexport) BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, L
 			patchScriptHook();
 			patchRandomMusic();
 			patchVersionNumber();
+			//patchPrintf();
 
 			break;
 
