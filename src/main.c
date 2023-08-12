@@ -279,7 +279,6 @@ uint8_t compLevels[] = {
 
 int oldLevel = 0;
 int oldProgress = 0;
-int retryCounter = 0;
 
 void retryHook() {
 	int (__cdecl *IsCareerMode)(void) = (void *)0x00421540;
@@ -295,10 +294,7 @@ void retryHook() {
 			uint32_t *goals = (*career + 0x564 + ((*level - 1) * 8));
 			uint32_t *someflags = (*career + 0x5e4 + ((*level - 1) * 8));
 
-			//uint32_t *othergoalsquestion = (*career + 0x65c + ((*level + 1) * 4));
-
-			//printf("other goals? = 0x%08x\n", *othergoalsquestion);
-			*someflags = 0;
+			*someflags = 0;	// keeps the goal messages from disappearing sometimes.  don't know what that's about.
 
 			if (*level != oldLevel) {
 				oldLevel = *level;
@@ -310,14 +306,6 @@ void retryHook() {
 			}
 
 			*goals = 0;
-
-			retryCounter++;
-
-			if (retryCounter >= 10) {
-				retryCounter = 0;
-				//callFunc(0x004220c0);	// reload the level
-				//callFunc(0x00422880);	// reinsert skaters
-			}
 		}
 	}
 
@@ -326,8 +314,6 @@ void retryHook() {
 
 void loadRequestedLevelHook() {
 	int (__cdecl *IsCareerMode)(void) = (void *)0x00421540;
-
-	retryCounter = 0;
 
 	if (oldLevel != 0 && !compLevels[oldLevel]) {
 		// restore career progress
