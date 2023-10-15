@@ -59,10 +59,10 @@ typedef struct {
 	uint32_t isValid;
 	uint32_t unk_24;
 	uint8_t controlData[32];	// PS2 format control data
-	uint32_t vibrationData_align[8];
-	uint32_t vibrationData_direct[8];
-	uint32_t vibrationData_max[8];
-	uint32_t vibrationData_oldDirect[8];    // there may be something before this
+	uint8_t vibrationData_align[32];
+	uint8_t vibrationData_direct[32];
+	uint8_t vibrationData_max[32];
+	uint8_t vibrationData_oldDirect[32];    // there may be something before this
 	// 160
 	// 176
 	//uint32_t unk4;
@@ -70,10 +70,10 @@ typedef struct {
 	//uint32_t unk4;
 	uint32_t unk5;
 	// 192
-	uint32_t unk6;
-	uint32_t unk7;
+	uint32_t actuators_disabled;
+	uint32_t capabilities;
 	uint32_t unk8;
-	uint32_t unk9;
+	uint32_t num_actuators;
 	// 208
 	uint32_t unk10;
 	uint32_t state;
@@ -541,6 +541,12 @@ void __cdecl processController(device *dev) {
 	while(SDL_PollEvent(&e)) {
 		processEvent(&e);
 	}
+
+	dev->capabilities = 0x0003;
+	dev->num_actuators = 2;
+	dev->vibrationData_max[0] = 255;
+	dev->vibrationData_max[1] = 255;
+	dev->state = 2;
 
 	dev->isValid = 1;
 	dev->isPluggedIn = 1;

@@ -134,11 +134,6 @@ void patchWindow() {
 	patchByte((void *)0x0040773b, 0x74);    // JNZ -> JZ
 	patchByte((void *)0x00425f42, 0x74);    // JNZ -> JZ
 	patchByte((void *)0x00449e6f, 0x74);    // JNZ -> JZ
-
-	// remove sleep from main loop
-	patchNop((void *)0x004c05eb, 2);
-	patchNop((void *)0x004c067a, 8);
-	//patchByte((void *)(0x004c067a + 1), 0x01);
 }
 
 #define GRAPHICS_SECTION "Graphics"

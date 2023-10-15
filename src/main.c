@@ -14,7 +14,7 @@
 
 #define VERSION_NUMBER_MAJOR 1
 #define VERSION_NUMBER_MINOR 1
-#define VERSION_NUMBER_PATCH 1
+#define VERSION_NUMBER_PATCH 2
 
 int __stdcall playIntroMovie(char *filename, int unk) {
 	void *(__stdcall *getMoviePlayer)(int) = (void *)0x00406d40;
@@ -390,6 +390,102 @@ void patchOnlineService(char *configFile) {
 	printf("Patched online server: %s\n", domainStr);
 }
 
+void safeWait(uint64_t endTime) {
+	uint64_t timerFreq = SDL_GetPerformanceFrequency();
+	uint64_t safetyThreshold = (timerFreq / 1000) * 3;	// 3ms
+
+	uint64_t currentTime = SDL_GetPerformanceCounter();
+
+	while (currentTime < endTime) {
+		currentTime = SDL_GetPerformanceCounter();
+
+		//printf("%f\n", timerAccumulator);
+
+		if (endTime - currentTime > safetyThreshold) {
+			//uint64_t bsleep = SDL_GetPerformanceCounter();
+			SDL_Delay(1);
+			//uint64_t asleep = SDL_GetPerformanceCounter();
+			//printf("BIG yawn! %f\n", (asleep - bsleep) / ((double)timerFreq / 1000.0));
+		}
+	}
+}
+
+uint64_t nextFrame = 0;
+uint64_t frameStart = 0;
+uint64_t safeTime = 0;
+
+void do_frame_cap() {
+	uint64_t timerFreq = SDL_GetPerformanceFrequency();
+	uint64_t frameTarget = timerFreq / 60;
+
+	if (!nextFrame || nextFrame < SDL_GetPerformanceCounter()) {
+		nextFrame = SDL_GetPerformanceCounter() + frameTarget;
+	} else {
+		safeWait(nextFrame);
+		nextFrame += frameTarget;
+	}
+}
+
+void *origPresent = NULL;
+
+/*int __fastcall presentWrapper(void *d3d8dev, void *pad, void *d3d8devagain, void *srcRect, void *dstRect, void *dstWinOverride, void *dirtyRegion) {
+	int (__fastcall *present)(void *, void *, void *, void *, void *, void *, void *) = (void *)origPresent;
+
+	//do_frame_cap();
+
+	int result = present(d3d8dev, pad, d3d8devagain, srcRect, dstRect, dstWinOverride, dirtyRegion);
+
+	return result;
+}*/
+
+void *origCreateDevice = NULL;
+
+int __fastcall createDeviceWrapper(void *id3d8, void *pad, void *id3d8again, uint32_t adapter, uint32_t type, void *hwnd, uint32_t behaviorFlags, uint32_t *presentParams, void *devOut) {
+	int (__fastcall *createDevice)(void *, void *, void *, uint32_t, uint32_t, void *, uint32_t, uint32_t *, void *) = (void *)origCreateDevice;
+
+
+	presentParams[5] = 4;
+
+	int result = createDevice(id3d8, pad, id3d8again, adapter, type, hwnd, behaviorFlags, presentParams, devOut);
+
+	//if (result == 0 && devOut) {
+		//uint8_t *device = **(uint32_t **)devOut;
+
+		//origPresent = *(uint32_t *)(device + 0x3c);
+		//patchDWord(device + 0x3c, presentWrapper);
+	//}
+
+	return result;
+}
+
+void * __stdcall createD3D8Wrapper(uint32_t version) {
+	void *(__stdcall *created3d8)(uint32_t) = (void *)0x00569d20;
+
+	void *result = created3d8(version);
+
+	if (result) {
+		uint8_t *iface = *(uint32_t *)result;
+
+		origCreateDevice = *(uint32_t *)(iface + 0x3c);
+		patchDWord(iface + 0x3c, createDeviceWrapper);
+	}
+	
+	return result;
+}
+
+void patchFramerateCap() {
+	patchByte(0x004c0507, 0xEB);	// skip original framerate cap logic
+	patchNop(0x004c04ef, 24);
+	patchCall(0x004c04ef, do_frame_cap);
+
+	patchCall(0x0054e433, createD3D8Wrapper);
+
+	// remove sleep from main loop
+	patchNop((void *)0x004c05eb, 2);
+	patchNop((void *)0x004c067a, 8);
+	//patchByte((void *)(0x004c067a + 1), 0x01);
+}
+
 uint32_t rng_seed = 0;
 int ILMode;
 int disableTrickLimit;
@@ -519,6 +615,7 @@ __declspec(dllexport) BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, L
 			patchScriptHook();
 			patchRandomMusic();
 			patchVersionNumber();
+			patchFramerateCap();
 			//patchPrintf();
 
 			break;
