@@ -14,7 +14,9 @@ The patch is designed to keep the game as original as possible, and leave its fi
 * Fixed ledge warp bugs where the skater is teleported down farther than intended
 * Fixed visually missing geometry in various areas (notably, the airport entrance and destructable wall in Skater Island)
 * Fixes the skater's shadow not appearing transparent
-* Connects to alternative online services (defaults to OpenSpy)
+* Fixes missing sounds after several retries
+* Connects to alternative online services (defaults to OpenSpy) 
+* Fixes network interface binding issues (hosting servers works now!  remember to forward ports 5150-5151 (as usual) as well as 6500)
 * Optionally adds a single level practice mode for speedrunning
 * Optionally removes the trick cap for combo multipliers
 

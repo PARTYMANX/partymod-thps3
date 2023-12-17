@@ -14,7 +14,7 @@
 
 #define VERSION_NUMBER_MAJOR 1
 #define VERSION_NUMBER_MINOR 1
-#define VERSION_NUMBER_PATCH 2
+#define VERSION_NUMBER_PATCH 3
 
 int __stdcall playIntroMovie(char *filename, int unk) {
 	void *(__stdcall *getMoviePlayer)(int) = (void *)0x00406d40;
@@ -486,6 +486,21 @@ void patchFramerateCap() {
 	//patchByte((void *)(0x004c067a + 1), 0x01);
 }
 
+void __fastcall doSoundCleanup(void *skatemod) {
+	void (__fastcall *origCleanup)(void *) = (void *)0x004397a0;
+	void (__stdcall *soundCleanup)() = (void *)0x00408c30;
+
+	origCleanup(skatemod);
+	soundCleanup();
+}
+
+void patchSoundFix() {
+	// fixes sounds failing to play after several retry
+	// thanks to not6 on github for finding this fix!
+	
+	patchCall(0x00439b1c, doSoundCleanup);
+}
+
 uint32_t rng_seed = 0;
 int ILMode;
 int disableTrickLimit;
@@ -596,6 +611,27 @@ void patchPrintf() {
 	patchDWord((void *)0x0058d10c, printf);
 }
 
+int (__stdcall *theirbind)(SOCKET, const struct sockaddr_in *, int) = NULL;
+
+int __stdcall bindWrapper(SOCKET socket, struct sockaddr_in *address, int namelen) {
+	address->sin_addr.S_un.S_addr = INADDR_ANY;	// bind too all interfaces instead of just one
+
+	int result = theirbind(socket, address, namelen);
+
+	return result;
+}
+
+void patchNetworkBind() {
+	uint32_t *bindaddr = 0x00519500 + 1;
+
+	theirbind = ((int)bindaddr) + 4 + *bindaddr;
+
+	patchCall(0x004d9f3e, bindWrapper);	// i think this is the relevant one, but it doesn't seem to do harm to patch the rest
+	patchCall(0x004d9f75, bindWrapper); 
+	patchCall(0x00518a32, bindWrapper);
+	patchCall(0x00519500, bindWrapper);
+}
+
 __declspec(dllexport) BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved) {
 	// Perform actions based on the reason for calling.
 	switch(fdwReason) { 
@@ -617,6 +653,8 @@ __declspec(dllexport) BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, L
 			patchVersionNumber();
 			patchFramerateCap();
 			//patchPrintf();
+			patchSoundFix();
+			patchNetworkBind();
 
 			break;
 

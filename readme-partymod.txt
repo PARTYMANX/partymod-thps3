@@ -1,4 +1,4 @@
-PARTYMOD 1.1.0
+PARTYMOD 1.1.3
 
 This is a patch for THPS3 1.01 to improve its input handling as well as smooth out a few other parts of the PC port.
 The patch is designed to keep the game as original as possible, and leave its files unmodified.
@@ -16,7 +16,9 @@ Features and Fixes:
 - Fixed visually missing geometry in various areas (notably, the airport entrance and destructable wall in Skater Island)
 - Fixes music randomization having the same sequence between sessions
 - Fixes the skater's shadow not appearing transparent
+- Fixes missing sounds after several retries
 - Connects to alternative online services (defaults to OpenSpy)
+- Fixes network interface binding issues (hosting servers works now!  remember to forward ports 5150-5151 (as usual) as well as 6500)
 - Optionally adds a single level practice mode for speedrunning
 - Optionally removes the trick cap for combo multipliers
 
