@@ -13,8 +13,8 @@
 #include <script.h>
 
 #define VERSION_NUMBER_MAJOR 1
-#define VERSION_NUMBER_MINOR 1
-#define VERSION_NUMBER_PATCH 3
+#define VERSION_NUMBER_MINOR 0
+#define VERSION_NUMBER_PATCH 1
 
 int __stdcall playIntroMovie(char *filename, int unk) {
 	void *(__stdcall *getMoviePlayer)(int) = (void *)0x00406d40;
@@ -582,10 +582,6 @@ int getVersionNumberHook(void *param) {
 
 	inner_set_version(unkp, buffer);
 	return 1;
-}
-
-void patchVersionNumber() {
-	patchDWord(0x005b83d4, getVersionNumberHook);
 }
 
 void patchNoLauncher() {
