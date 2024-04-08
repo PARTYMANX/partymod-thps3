@@ -230,15 +230,25 @@ uint8_t getButton(SDL_GameController *controller, controllerButton button) {
 }
 
 void getStick(SDL_GameController *controller, controllerStick stick, uint8_t *xOut, uint8_t *yOut) {
+	uint8_t result_x, result_y;
+
 	if (stick == CONTROLLER_STICK_LEFT) {
-		*xOut = (uint8_t)((SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX) >> 8) + 128);
-		*yOut = (uint8_t)((SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY) >> 8) + 128);
+		result_x = (uint8_t)((SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTX) >> 8) + 128);
+		result_y = (uint8_t)((SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_LEFTY) >> 8) + 128);
 	} else if (stick == CONTROLLER_STICK_RIGHT) {
-		*xOut = (uint8_t)((SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTX) >> 8) + 128);
-		*yOut = (uint8_t)((SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTY) >> 8) + 128);
+		result_x = (uint8_t)((SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTX) >> 8) + 128);
+		result_y = (uint8_t)((SDL_GameControllerGetAxis(controller, SDL_CONTROLLER_AXIS_RIGHTY) >> 8) + 128);
 	} else {
-		*xOut = 0x80;
-		*yOut = 0x80;
+		result_x = 0x80;
+		result_y = 0x80;
+	}
+
+	if (axisAbs(result_x) > axisAbs(*xOut)) {
+		*xOut = result_x;
+	}
+
+	if (axisAbs(result_y) > axisAbs(*yOut)) {
+		*yOut = result_y;
 	}
 }
 
