@@ -277,8 +277,11 @@ uint8_t compLevels[] = {
 	0,
 };
 
+#define STATS_AND_BOARDS_MASK 0x01f80000
+
 int oldLevel = 0;
 int oldProgress = 0;
+int oldPickups = 0;
 
 void retryHook() {
 	int (__cdecl *IsCareerMode)(void) = (void *)0x00421540;
@@ -305,7 +308,13 @@ void retryHook() {
 				oldProgress = *goals | oldProgress;
 			}
 
+			uint32_t pickups = *(someflags + 1) & STATS_AND_BOARDS_MASK;
+			if (pickups & oldPickups != pickups) {
+				oldPickups = pickups | oldPickups;
+			}
+
 			*goals = 0;
+			*(someflags + 1) ^= pickups;
 		}
 	}
 
@@ -325,6 +334,10 @@ void loadRequestedLevelHook() {
 		uint32_t *goals = (*career + 0x564 + ((oldLevel - 1) * 8));
 
 		*goals = *goals | oldProgress;
+
+		uint32_t *pickups = (*career + 0x5e4 + ((oldLevel - 1) * 8)) + 1;
+
+		*pickups = *pickups | oldPickups;
 	}
 
 	callFunc(0x004220c0);
@@ -343,6 +356,10 @@ void endRunHook() {
 		uint32_t *goals = (*career + 0x564 + ((oldLevel - 1) * 8));
 
 		*goals = *goals | oldProgress;
+
+		uint32_t *pickups = (*career + 0x5e4 + ((oldLevel - 1) * 8)) + 1;
+
+		*pickups = *pickups | oldPickups;
 	}
 
 	callFunc(0x004216f0);	// call end run
