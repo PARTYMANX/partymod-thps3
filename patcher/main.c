@@ -28,7 +28,7 @@ int main(int argc, char **argv) {
 
 			// check input crc (not using the one in the bps due to multiple valid executables)
 			uint32_t inputcrc = crc32(buffer, filesize);
-			if (inputcrc != 0xdda4822f && inputcrc != 0x045925e8) {
+			if (inputcrc != 0xdda4822f && inputcrc != 0x045925e8 && inputcrc != 0xa1414bba) {
 				printf("INPUT CRC DOES NOT MATCH EXPECTED: %08x\n", inputcrc);
 				printf("Make sure THPS3 Patch 1.01 is installed\n");
 				printf("Patch Failed!\n");
@@ -46,12 +46,10 @@ int main(int argc, char **argv) {
 
 			// check crc (again, not using the one in the bps due to multiple valid executables)
 			uint32_t outputcrc = crc32(patchedBuffer, patchedLen);
-			if (outputcrc != 0xbb5e5c48 && outputcrc != 0x69133ccb) {
-				printf("OUTPUT CRC DOES NOT MATCH EXPECTED: %08x\n", inputcrc);
+			if (outputcrc != 0xbb5e5c48 && outputcrc != 0x69133ccb && outputcrc != 0xff4861b5) {
+				printf("OUTPUT CRC DOES NOT MATCH EXPECTED: %08x\n", outputcrc);
 				printf("Make sure THPS3 Patch 1.01 is installed\n");
-				printf("Patch Failed!\n");
-
-				goto end;
+				printf("Patch may not work!\n");
 			}
 
 			// write to THPS3.exe

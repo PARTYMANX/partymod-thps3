@@ -302,6 +302,7 @@ void retryHook() {
 			if (*level != oldLevel) {
 				oldLevel = *level;
 				oldProgress = *goals;
+				oldPickups = *(someflags + 1);
 			}
 
 			if (*goals & oldProgress != *goals) {
