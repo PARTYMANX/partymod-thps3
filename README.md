@@ -6,7 +6,7 @@ The patch is designed to keep the game as original as possible, and leave its fi
 PARTYMOD is a series of patches that provide various fixes and modernizations for the THPS series and other games on their engines.
 [Other PARTYMOD Releases Available Here](https://partymod.newnet.city/)
 
-### Features and Fixes
+## Features and Fixes
 * Replaced input system entirely with new, modern system using the SDL2 library
 * Movement stick now controls menus
 * Improved cursor handling, no longer moving the cursor and only showing it when relevant
@@ -24,7 +24,7 @@ PARTYMOD is a series of patches that provide various fixes and modernizations fo
 * Optionally adds a single level practice mode for speedrunning
 * Optionally removes the trick cap for combo multipliers
 
-### Installation
+## Installation
 1. Download PARTYMOD from the releases tab
 2. Make sure THPS3 (English) is installed and the 1.01 patch is applied, remove the widescreen mod if it is installed (delete dinput8.dll)
 3. Extract this zip folder into your THPS3 installation directory
@@ -36,7 +36,7 @@ NOTE: if the game is installed into the "Program Files" directory, you may need 
 Also, if the game is installed into the "Program Files" directory, save files will be saved in the C:\Users\<name>\AppData\Local\VirtualStore directory.  
 For more information, see here: https://answers.microsoft.com/en-us/windows/forum/all/please-explain-virtualstore-for-non-experts/d8912f80-b275-48d7-9ff3-9e9878954227
 
-### Building
+## Building
 The build requires CMake and SDL2 (I install it via vspkg).  Create the project file like so from the partymod-thps3/build directory:
 ```
 cmake .. -A win32 -DCMAKE_TOOLCHAIN_FILE=C:/[vcpkg directory]/scripts/buildsystems/vcpkg.cmake
