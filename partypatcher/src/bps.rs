@@ -6,6 +6,9 @@ use crate::crc::crc32;
 pub enum BPSError {
     InputSize(usize, usize),
     OutputSize(usize, usize),
+    InputCRC(u32, u32),
+    OutputCRC(u32, u32),
+    PatchCRC(u32, u32),
 }
 
 impl fmt::Display for BPSError {
@@ -13,11 +16,14 @@ impl fmt::Display for BPSError {
         match self {
             BPSError::InputSize(expected, actual) => write!(f, "Bad input size: Expected: {}, Actual: {}", expected, actual),
             BPSError::OutputSize(expected, actual) => write!(f, "Bad input size: Expected: {}, Actual: {}", expected, actual),
+            BPSError::InputCRC(expected, actual) => write!(f, "Bad input checksum: Expected: {}, Actual: {}", expected, actual),
+            BPSError::OutputCRC(expected, actual) => write!(f, "Bad output checksum: Expected: {}, Actual: {}", expected, actual),
+            BPSError::PatchCRC(expected, actual) => write!(f, "Bad patch checksum: Expected: {}, Actual: {}", expected, actual),
         }
     }
 }
 
-static MAGIC_NUM: u32 = (b'B' as u32) << 24 | (b'P' as u32) << 16 | (b'S' as u32) << 8 | (b'1' as u32) << 0;
+static MAGIC_NUM: u32 = u32::from_le_bytes([b'B', b'P', b'S', b'1']);
 
 fn decode_number(buf: &[u8], offset: usize) -> (u64, usize) {
     let mut result = 0;
@@ -39,8 +45,8 @@ fn decode_number(buf: &[u8], offset: usize) -> (u64, usize) {
     (result, sz)
 }
 
-pub fn bps_patch_unchecked(input: &[u8], patch: &[u8]) -> Result<Vec<u8>, BPSError> {
-    let magic_num = u32::from_be_bytes(patch[0..4].try_into().unwrap());
+fn bps_patch_internal(input: &[u8], patch: &[u8], check_crc: bool) -> Result<Vec<u8>, BPSError> {
+    let magic_num = u32::from_le_bytes(patch[0..4].try_into().unwrap());
 
     assert_eq!(magic_num, MAGIC_NUM);
 
@@ -61,8 +67,6 @@ pub fn bps_patch_unchecked(input: &[u8], patch: &[u8]) -> Result<Vec<u8>, BPSErr
     let (metadata_size, metadata_size_len) = decode_number(patch, current_offset);
     current_offset += metadata_size_len + metadata_size as usize;    // skip metadata
 
-    println!("STARTING AT {}", current_offset);
-
     let mut input_offset_accumulator = 0;
     let mut output_offset_accumulator = 0;
     while current_offset < patch.len() - 12 {
@@ -76,16 +80,12 @@ pub fn bps_patch_unchecked(input: &[u8], patch: &[u8]) -> Result<Vec<u8>, BPSErr
                 let start = output_buf.len();
                 let end = start + segment_len as usize;
                 output_buf.extend_from_slice(&input[start..end]);
-
-                println!("{:#04x}: {}..{} {:#010x}", segment_type, start, end - start, crc32(&output_buf));
             },
             0x01 => {
                 let start = current_offset;
                 let end = start + segment_len as usize;
                 output_buf.extend_from_slice(&patch[start..end]);
                 current_offset += segment_len as usize;
-
-                println!("{:#04x}: {}..{} {:#010x}", segment_type, start, end - start, crc32(&output_buf));
             },
             0x02 => {
                 let (offset, offset_len) = decode_number(patch, current_offset);
@@ -103,8 +103,6 @@ pub fn bps_patch_unchecked(input: &[u8], patch: &[u8]) -> Result<Vec<u8>, BPSErr
                 output_buf.extend_from_slice(&input[start..end]);
 
                 input_offset_accumulator += segment_len as i64;
-
-                println!("{:#04x}: {}..{} {:#010x}", segment_type, start, end - start, crc32(&output_buf));
             },
             0x03 => {
                 let (offset, offset_len) = decode_number(patch, current_offset);
@@ -123,8 +121,6 @@ pub fn bps_patch_unchecked(input: &[u8], patch: &[u8]) -> Result<Vec<u8>, BPSErr
                 output_buf.extend_from_slice(&intermediate_buffer);
 
                 output_offset_accumulator += segment_len as i64;
-
-                println!("{:#04x}: {}..{} {:#010x}", segment_type, start, end - start, crc32(&output_buf));
             },
             _ => {
                 unreachable!("Got segment type {}!", segment_type);
@@ -136,5 +132,33 @@ pub fn bps_patch_unchecked(input: &[u8], patch: &[u8]) -> Result<Vec<u8>, BPSErr
         return Err(BPSError::OutputSize(output_expected_size as usize, output_buf.len()));
     }
 
+    if check_crc {
+        let expected_input_crc = u32::from_le_bytes(patch[current_offset..current_offset+4].try_into().unwrap());
+        let actual_input_crc = crc32(input);
+        if expected_input_crc != actual_input_crc {
+            return Err(BPSError::InputCRC(expected_input_crc, actual_input_crc));
+        }
+
+        current_offset += 4;
+
+        let expected_output_crc = u32::from_le_bytes(patch[current_offset..current_offset+4].try_into().unwrap());
+        let actual_output_crc = crc32(&output_buf);
+        if expected_output_crc != actual_output_crc {
+            return Err(BPSError::OutputCRC(expected_output_crc, actual_output_crc));
+        }
+
+        current_offset += 4;
+
+        let expected_patch_crc = u32::from_le_bytes(patch[current_offset..current_offset+4].try_into().unwrap());
+        let actual_patch_crc = crc32(patch);
+        if expected_patch_crc != actual_patch_crc {
+            return Err(BPSError::PatchCRC(expected_patch_crc, actual_patch_crc));
+        }
+    }
+
     Ok(output_buf)
+}
+
+pub fn bps_patch_unchecked(input: &[u8], patch: &[u8]) -> Result<Vec<u8>, BPSError> {
+    bps_patch_internal(input, patch, false)
 }

@@ -100,6 +100,8 @@ pub fn do_patch_internal(config: &PatcherConfig) -> PatcherResult {
     }
 
     // start patch
+    println!("Patching {}...", config.input_filename);
+
     let output_buffer = match bps_patch_unchecked(&input_file_buffer, target_patch.patch_data) {
         Ok(v) => v,
         Err(e) => {

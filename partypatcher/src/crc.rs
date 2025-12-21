@@ -55,11 +55,3 @@ pub fn crc32(buf: &[u8]) -> u32 {
 
     return crc.bitxor(0xffffffff);
 }
-
-//const uint8_t *p = buf;
-//uint32_t crc;
-
-//crc = 0xffffffff;
-//while (size--)
-//	crc = crc32lut[(crc ^ *p++) & 0xFF] ^ (crc >> 8);
-//return crc ^ 0xffffffff;
