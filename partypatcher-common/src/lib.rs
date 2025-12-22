@@ -1,9 +1,9 @@
 use std::{fs::File, io::{Read, Write}, path::Path, process::{ExitCode, Termination}};
+use partymod_common::{bps::bps_patch_unchecked, crc::crc32};
 
 #[cfg(windows)] 
 use libc::c_int;
 
-use crate::{bps::bps_patch_unchecked, crc::crc32};
 #[cfg(windows)] 
 extern "C" {
     fn _getch()->c_int;

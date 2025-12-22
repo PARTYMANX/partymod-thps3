@@ -1,8 +1,4 @@
-use crate::patcher::{ChecksumSet, PatchConfig, PatcherConfig, PatcherResult, do_patch};
-
-mod patcher;
-mod crc;
-mod bps;
+use partypatcher_common::{ChecksumSet, PatchConfig, PatcherConfig, PatcherResult, do_patch};
 
 fn main() -> PatcherResult {
     let patch_config = PatcherConfig {

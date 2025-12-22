@@ -1,5 +1,5 @@
 [package]
-name = "partypatcher"
+name = "partypatcher-common"
 version = "1.0.0"
 edition = "2021"
 
@@ -7,4 +7,4 @@ edition = "2021"
 
 [dependencies]
 libc = "0.2"
-partypatcher-common = { path = "../partypatcher-common" }
+partymod-common = { path = "../partymod-common" }
