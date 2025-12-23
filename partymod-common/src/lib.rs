@@ -3,3 +3,5 @@ pub mod patch;
 pub mod config;
 pub mod bps;
 pub mod crc;
+pub mod event;
+pub mod window;

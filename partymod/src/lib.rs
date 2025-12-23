@@ -1,5 +1,10 @@
 use partymod_common::{patch, config};
 
+mod sdl;
+mod event;
+mod window;
+mod settings;
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 extern "C" fn init_patch() {
@@ -17,11 +22,12 @@ extern "C" fn init_patch() {
         unsafe { gfx_d3d::patch() };
     }*/
 
-    //sdl::init_sdl();
-    //gameplay::init();
-    //event::init();
+    sdl::init();
+    event::init();
+    window::init();
 
-    //event::register_handler(window::handle_event);
+    event::register_handler(handle_exit_event);
+    event::register_handler(window::handle_event);
     //event::register_handler(input::handle_event);
 
     if config::get_config_bool("Miscellaneous", "Debug", false) {
@@ -29,6 +35,19 @@ extern "C" fn init_patch() {
     }
 
     println!("PARTYMOD for THPS3 {}", VERSION);
+}
+
+fn handle_exit_event(e: &sdl3::event::Event) {
+    match e {
+        sdl3::event::Event::Quit {..} => {
+            unsafe {
+                // call the script reset engine function to gracefully exit the main loop
+                let script_reset_engine: unsafe extern "C" fn() = std::mem::transmute(0x0041ba40 as *const ());
+                script_reset_engine();
+            }
+        }
+        _ => {}
+    }
 }
 
 unsafe fn patch_init() {
@@ -42,16 +61,28 @@ unsafe fn patch_init() {
     patch::patch_call(0x0040b9da as *mut (), init_patch as *const ());  // use now unused space to call our init func
 }
 
+extern "C" fn fast_quit() {
+    std::process::exit(0);
+}
+
+unsafe fn patch_fast_quit() {
+    // patch in a function to quickly exit the program and skip cleanup since the OS handles that just fine
+    patch::patch_call(0x0040ae28 as *mut (), fast_quit as *const ());
+}
+
 //#[unsafe(export_name = "DllMain")]
 #[no_mangle]
 pub extern "stdcall" fn DllMain(_hinst_dll: usize, fdw_reason: u32, _lp_reserved: usize) -> i32 {
     match fdw_reason {
         windows_sys::Win32::System::SystemServices::DLL_PROCESS_ATTACH => {
             unsafe {
-                // window MUST be patched before initializer
                 patch_init();
-                //window::patch_window();
-                //event::patch_event_handler();
+                patch_fast_quit();
+                event::patch();
+                window::patch();
+                settings::patch();
+                
+                patch::patch_nop(0x004079a8 as *mut (), 0x004079f4 + 5 - 0x004079a8);   // TEMPORARY - remove video playback
                 //input::patch();
             }   
     
