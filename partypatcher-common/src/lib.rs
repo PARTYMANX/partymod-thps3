@@ -5,7 +5,7 @@ use partymod_common::{bps::bps_patch_unchecked, crc::crc32};
 use libc::c_int;
 
 #[cfg(windows)] 
-extern "C" {
+unsafe extern "C" {
     fn _getch()->c_int;
 }
 

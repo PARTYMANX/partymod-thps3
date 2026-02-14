@@ -1,7 +1,7 @@
 [package]
 name = "partymod"
 version = "2.0.0-preview-0.0.1"
-edition = "2021"
+edition = "2024"
 
 [lib]
 crate-type = ["cdylib"]
@@ -9,6 +9,9 @@ crate-type = ["cdylib"]
 [dependencies]
 libc = "0.2"
 windows-sys = { version = "0.60.0", features = ["Win32", "Win32_System", "Win32_System_Memory", "Win32_System_SystemServices", "Win32_System_Console", "Win32_System_WindowsProgramming"] }
-sdl3 = { version = "0.16.2", features = ["build-from-source", "raw-window-handle"] }
+sdl3 = { version = "0.17.3", features = ["build-from-source", "raw-window-handle"] }
 raw-window-handle = "0.6.2"
 partymod-common = { path = "../partymod-common" }
+
+[build-dependencies]
+cc = "1.2.50"

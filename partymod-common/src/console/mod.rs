@@ -1,4 +1,4 @@
-extern "C" {
+unsafe extern "C" {
     fn get_stdin() -> *mut libc::FILE;
     fn get_stdout() -> *mut libc::FILE;
     fn get_stderr() -> *mut libc::FILE;

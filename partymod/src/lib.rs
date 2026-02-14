@@ -51,14 +51,15 @@ fn handle_exit_event(e: &sdl3::event::Event) {
 }
 
 unsafe fn patch_init() {
-    // patch in a call to our initialization function
-    // replaces the launcher check/startup
+    unsafe {
+        // patch in a call to our initialization function
+        // replaces the launcher check/startup
+        patch::patch_nop(0x0040b9da as *mut (), 7); // remove call to run launcher
+        patch::patch_byte(0x0040b9e1 as *mut (), 0xeb);   // change launcher branch from JZ to JMP
+        patch::patch_nop(0x0040b9fc as *mut (), 12);    // remove call to change registry
 
-    patch::patch_nop(0x0040b9da as *mut (), 7); // remove call to run launcher
-    patch::patch_byte(0x0040b9e1 as *mut (), 0xeb);   // change launcher branch from JZ to JMP
-    patch::patch_nop(0x0040b9fc as *mut (), 12);    // remove call to change registry
-
-    patch::patch_call(0x0040b9da as *mut (), init_patch as *const ());  // use now unused space to call our init func
+        patch::patch_call(0x0040b9da as *mut (), init_patch as *const ());  // use now unused space to call our init func
+    }
 }
 
 extern "C" fn fast_quit() {
@@ -66,12 +67,14 @@ extern "C" fn fast_quit() {
 }
 
 unsafe fn patch_fast_quit() {
-    // patch in a function to quickly exit the program and skip cleanup since the OS handles that just fine
-    patch::patch_call(0x0040ae28 as *mut (), fast_quit as *const ());
+    unsafe {
+        // patch in a function to quickly exit the program and skip cleanup since the OS handles that just fine
+        patch::patch_call(0x0040ae28 as *mut (), fast_quit as *const ());
+    }
 }
 
 //#[unsafe(export_name = "DllMain")]
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "stdcall" fn DllMain(_hinst_dll: usize, fdw_reason: u32, _lp_reserved: usize) -> i32 {
     match fdw_reason {
         windows_sys::Win32::System::SystemServices::DLL_PROCESS_ATTACH => {

@@ -33,7 +33,9 @@ pub fn register_handler(handler: fn(&sdl3::event::Event)) {
 }
 
 pub unsafe fn patch() {
-    // peekmessages at 00409280
-    patch::patch_jmp(0x00409280 as *mut (), process_events as *const ());
-    // there's another event handler for movies specifically, but I think I'll just disable that for the time being because we're just going to write a new player
+    unsafe {
+        // peekmessages at 00409280
+        patch::patch_jmp(0x00409280 as *mut (), process_events as *const ());
+        // there's another event handler for movies specifically, but I think I'll just disable that for the time being because we're just going to write a new player
+    }
 }

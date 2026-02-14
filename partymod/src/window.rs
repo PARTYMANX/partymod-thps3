@@ -131,6 +131,8 @@ extern "C" fn is_window() -> bool {
 }
 
 pub unsafe fn patch() {
-    patch::patch_jmp(0x00409be0 as *mut (), get_or_create_window as *const ());
-    patch::patch_jmp(0x00409f70 as *mut (), is_window as *const ());
+    unsafe {
+        patch::patch_jmp(0x00409be0 as *mut (), get_or_create_window as *const ());
+        patch::patch_jmp(0x00409f70 as *mut (), is_window as *const ());
+    }
 }

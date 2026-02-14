@@ -39,5 +39,7 @@ extern "C" fn init_settings() {
 }
 
 pub unsafe fn patch() {
-    patch::patch_jmp(0x0040b150 as *mut (), init_settings as *const ());
+    unsafe {
+        patch::patch_jmp(0x0040b150 as *mut (), init_settings as *const ());
+    }
 }
