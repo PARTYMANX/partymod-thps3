@@ -4,6 +4,7 @@ resolver = "3"
 members = [
     "partymod-common",
     "partypatcher-common",
+    "pgui",
     "partymod",
     "partypatcher",
 ]
