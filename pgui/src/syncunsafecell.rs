@@ -14,5 +14,3 @@ impl<T> SyncUnsafeCell<T> {
         self.0.get()
     }
 }
-
-//static STATE: SyncUnsafeCell<GlobalState> = SyncUnsafeCell(UnsafeCell::new(GlobalState::new()));

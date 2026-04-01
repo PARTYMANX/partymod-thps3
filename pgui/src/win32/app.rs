@@ -9,7 +9,7 @@ use super::window::Window;
 pub static FONT_CONTEXT: SyncUnsafeCell<MaybeUninit<Fonts>> = SyncUnsafeCell::new(MaybeUninit::uninit());
 
 pub struct Fonts {
-    /// Unscaled copy of the default GUI font, for calculation purposes.
+    /// Unscaled copy of the default GUI font, for layout calculation purposes.
     pub default_font: HFONT,
     /// Scaled copy of the default GUI font, for actual use.
     pub default_font_scaled: HFONT,
@@ -68,6 +68,16 @@ impl Fonts {
     }
 }
 
+pub static APP_CONTEXT: SyncUnsafeCell<Option<AppContext>> = SyncUnsafeCell::new(None);
+
+pub struct AppContext {
+    instance: HINSTANCE,
+
+    window: Window,
+}
+
+unsafe impl Sync for AppContext {}
+
 pub struct App {
     instance: HINSTANCE,
 
@@ -115,6 +125,9 @@ impl App {
 
             let window = Window::new(window_class);
 
+            let ctx = &mut *APP_CONTEXT.get();
+            *ctx = Some(AppContext { instance: instance.into(), window });
+
             // once everything has been created, show the window for force a repaint
             //let _ = ShowWindow(window.get_hwnd(), SW_NORMAL);
 
@@ -132,25 +145,11 @@ impl App {
 
 extern "system" fn wndproc(window: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe {
-        match msg {
-            WM_DESTROY => {
-                PostQuitMessage(0);
-                LRESULT(0)
-            }
-            WM_PAINT => {
-                let mut ps = PAINTSTRUCT::default();
-                let hdc = BeginPaint(window, &mut ps);
+        let ctx = &mut *APP_CONTEXT.get();
 
-                FillRect(hdc, &ps.rcPaint, HBRUSH(COLOR_WINDOW.0 as *mut c_void));
-
-                _ = EndPaint(window, &ps);
-
-                //_ = ValidateRect(Some(window), None);
-                LRESULT(0)
-            }
-            _ => {
-                DefWindowProcW(window, msg, wparam, lparam)
-            }
+        match ctx {
+            Some(v) => v.window.wndproc(window, msg, wparam, lparam),
+            None => DefWindowProcW(window, msg, wparam, lparam)
         }
     }
 }
