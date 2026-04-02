@@ -2,7 +2,8 @@ use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut res = winres::WindowsResource::new();
-    res.set_manifest(r#"
+    res.set_manifest(
+        r#"
     <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
     <dependency>
         <dependentAssembly>
@@ -17,7 +18,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         </dependentAssembly>
     </dependency>
     </assembly>
-    "#);
+    "#,
+    );
     res.compile()?;
 
     Ok(())

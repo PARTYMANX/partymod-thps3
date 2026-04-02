@@ -4,7 +4,7 @@ struct ConfigContext {
     filename: std::ffi::CString,
 }
 
-unsafe impl Send for ConfigContext{}
+unsafe impl Send for ConfigContext {}
 
 static mut CONFIG_CONTEXT: std::mem::MaybeUninit<ConfigContext> = std::mem::MaybeUninit::uninit();
 
@@ -12,9 +12,7 @@ pub fn init(exe_path: &std::path::Path) {
     let filename = std::ffi::CString::new(exe_path.join("partymod.ini").to_str().unwrap()).unwrap();
 
     unsafe {
-        CONFIG_CONTEXT = std::mem::MaybeUninit::new(ConfigContext {
-            filename,
-        });
+        CONFIG_CONTEXT = std::mem::MaybeUninit::new(ConfigContext { filename });
     }
 }
 
@@ -25,10 +23,10 @@ pub fn get_config_int(section: &str, key: &str, default: i32) -> u32 {
 
     unsafe {
         windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntA(
-            app_name.as_ptr() as *const u8, 
-            key_name.as_ptr() as *const u8, 
-            default, 
-            CONFIG_CONTEXT.assume_init_ref().filename.as_ptr() as *const u8
+            app_name.as_ptr() as *const u8,
+            key_name.as_ptr() as *const u8,
+            default,
+            CONFIG_CONTEXT.assume_init_ref().filename.as_ptr() as *const u8,
         )
     }
 }
@@ -40,10 +38,10 @@ pub fn get_config_bool(section: &str, key: &str, default: bool) -> bool {
 
     let result = unsafe {
         windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntA(
-            app_name.as_ptr() as *const u8, 
-            key_name.as_ptr() as *const u8, 
-            default as i32, 
-            CONFIG_CONTEXT.assume_init_ref().filename.as_ptr() as *const u8
+            app_name.as_ptr() as *const u8,
+            key_name.as_ptr() as *const u8,
+            default as i32,
+            CONFIG_CONTEXT.assume_init_ref().filename.as_ptr() as *const u8,
         )
     };
 
@@ -59,12 +57,12 @@ pub fn get_config_string(section: &str, key: &str, default: &str) -> String {
 
     let result = unsafe {
         windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileStringA(
-            app_name.as_ptr() as *const u8, 
-            key_name.as_ptr() as *const u8, 
-            default.as_ptr() as *const u8, 
-            result_buf.as_mut_ptr(), 
-            256, 
-            CONFIG_CONTEXT.assume_init_ref().filename.as_ptr() as *const u8
+            app_name.as_ptr() as *const u8,
+            key_name.as_ptr() as *const u8,
+            default.as_ptr() as *const u8,
+            result_buf.as_mut_ptr(),
+            256,
+            CONFIG_CONTEXT.assume_init_ref().filename.as_ptr() as *const u8,
         )
     };
 

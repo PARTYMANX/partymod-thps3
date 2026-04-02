@@ -1,8 +1,25 @@
 use std::ffi::c_void;
 
-use windows::{Win32::{Foundation::{HWND, LPARAM, LRESULT, SIZE, WPARAM}, Graphics::Gdi::{GetDC, GetTextExtentPoint32W, ReleaseDC, SelectObject}, UI::{Controls::WC_BUTTONW, WindowsAndMessaging::{BS_PUSHBUTTON, CreateWindowExW, HMENU, SW_NORMAL, SendMessageW, ShowWindow, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE}}}, core::w};
+use windows::{
+    Win32::{
+        Foundation::{HWND, LPARAM, LRESULT, SIZE, WPARAM},
+        Graphics::Gdi::{GetDC, GetTextExtentPoint32W, ReleaseDC, SelectObject},
+        UI::{
+            Controls::WC_BUTTONW,
+            WindowsAndMessaging::{
+                BS_PUSHBUTTON, CreateWindowExW, HMENU, SW_NORMAL, SendMessageW, ShowWindow,
+                WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_SETFONT, WS_CHILD, WS_TABSTOP,
+                WS_VISIBLE,
+            },
+        },
+    },
+    core::w,
+};
 
-use crate::win32::{app::FONT_CONTEXT, window::{self, Window}};
+use crate::win32::{
+    app::FONT_CONTEXT,
+    window::{self, Window},
+};
 
 pub struct Button {
     hwnd: HWND,
@@ -27,7 +44,10 @@ impl Button {
                 WINDOW_EX_STYLE::default(),
                 WC_BUTTONW,
                 label,
-                WS_TABSTOP | WS_VISIBLE | WS_CHILD | WINDOW_STYLE(BS_PUSHBUTTON.try_into().unwrap()),
+                WS_TABSTOP
+                    | WS_VISIBLE
+                    | WS_CHILD
+                    | WINDOW_STYLE(BS_PUSHBUTTON.try_into().unwrap()),
                 0,
                 0,
                 size.cx + 32,
@@ -36,14 +56,15 @@ impl Button {
                 Some(HMENU(1 as *mut c_void)),
                 None,
                 None,
-            ).unwrap();
+            )
+            .unwrap();
 
             // set the font to the correct one
             SendMessageW(
                 hwnd,
                 WM_SETFONT,
                 Some(WPARAM(font_ctx.default_font_scaled.0 as usize)),
-                Some(LPARAM(1))
+                Some(LPARAM(1)),
             );
 
             //let _ = ShowWindow(hwnd, SW_NORMAL);
@@ -51,17 +72,20 @@ impl Button {
             hwnd
         };
 
-        Self {
-            hwnd,
-            on_pressed,
-        }
+        Self { hwnd, on_pressed }
     }
 
     pub fn get_hwnd(&self) -> HWND {
         self.hwnd
     }
 
-    pub fn wndproc(&self, window: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+    pub fn wndproc(
+        &self,
+        window: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> Option<LRESULT> {
         match msg {
             WM_COMMAND => {
                 let id = wparam.0 & 0xffff;

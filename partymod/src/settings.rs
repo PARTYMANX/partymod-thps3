@@ -33,7 +33,7 @@ extern "C" fn init_settings() {
 
         *ptr_custom_settings = true;
         *ptr_frame_cap = true;
-        
+
         *ptr_bit_depth = 32;
     }
 }

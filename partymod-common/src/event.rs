@@ -4,9 +4,7 @@ pub struct EventManager {
 
 impl EventManager {
     pub fn new() -> Self {
-        Self {
-            handlers: vec![],
-        }
+        Self { handlers: vec![] }
     }
 
     pub fn register_handler(&mut self, handler: fn(&sdl3::event::Event)) {

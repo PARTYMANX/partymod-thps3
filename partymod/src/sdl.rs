@@ -5,7 +5,7 @@ pub struct SdlContext {
     pub gamepad_subsystem: sdl3::GamepadSubsystem,
 }
 
-unsafe impl Send for SdlContext{}
+unsafe impl Send for SdlContext {}
 
 pub static mut SDL_CONTEXT: std::mem::MaybeUninit<SdlContext> = std::mem::MaybeUninit::uninit();
 

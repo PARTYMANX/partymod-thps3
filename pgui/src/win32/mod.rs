@@ -1,6 +1,6 @@
 pub mod app;
-mod window;
 mod button;
+mod window;
 
 /*
     writing down thoughts about design:

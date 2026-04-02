@@ -1,6 +1,16 @@
 use std::ffi::c_void;
 
-use windows::{Win32::{Foundation::{HWND, LPARAM, LRESULT, WPARAM}, Graphics::Gdi::{BeginPaint, COLOR_WINDOW, EndPaint, FillRect, HBRUSH, PAINTSTRUCT}, UI::WindowsAndMessaging::{CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, PostQuitMessage, WINDOW_EX_STYLE, WM_DESTROY, WM_PAINT, WS_OVERLAPPEDWINDOW, WS_VISIBLE}}, core::{PCWSTR, w}};
+use windows::{
+    Win32::{
+        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+        Graphics::Gdi::{BeginPaint, COLOR_WINDOW, EndPaint, FillRect, HBRUSH, PAINTSTRUCT},
+        UI::WindowsAndMessaging::{
+            CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, PostQuitMessage, WINDOW_EX_STYLE,
+            WM_DESTROY, WM_PAINT, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+        },
+    },
+    core::{PCWSTR, w},
+};
 
 use crate::win32::button::Button;
 
@@ -13,7 +23,6 @@ pub struct Window {
 
     // TODO: list of components (or more likely, a generational arena)
     components: Vec<Component>,
-
     // TODO: tree of objects to determine layout
 }
 
@@ -33,15 +42,16 @@ impl Window {
                 None,
                 None,
                 None,
-            ).unwrap()
+            )
+            .unwrap()
         };
 
-        let button = Button::new(window, || { println!("Pressed me!") });
+        let button = Button::new(window, || println!("Pressed me!"));
 
         Self {
             hwnd: window,
 
-            components: vec![ Component::Button(button) ],
+            components: vec![Component::Button(button)],
         }
     }
 
@@ -71,17 +81,19 @@ impl Window {
                     let mut result = None;
                     for c in &self.components {
                         result = match c {
-                            Component::Button(button) => button.wndproc(window, msg, wparam, lparam),
+                            Component::Button(button) => {
+                                button.wndproc(window, msg, wparam, lparam)
+                            }
                         };
 
                         if result.is_some() {
                             break;
                         }
-                    };
+                    }
 
                     match result {
                         Some(v) => v,
-                        None => DefWindowProcW(window, msg, wparam, lparam)
+                        None => DefWindowProcW(window, msg, wparam, lparam),
                     }
                 }
             }

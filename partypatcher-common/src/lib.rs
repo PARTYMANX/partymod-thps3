@@ -1,12 +1,17 @@
-use std::{fs::File, io::{Read, Write}, path::Path, process::{ExitCode, Termination}};
 use partymod_common::{bps::bps_patch_unchecked, crc::crc32};
+use std::{
+    fs::File,
+    io::{Read, Write},
+    path::Path,
+    process::{ExitCode, Termination},
+};
 
-#[cfg(windows)] 
+#[cfg(windows)]
 use libc::c_int;
 
-#[cfg(windows)] 
+#[cfg(windows)]
 unsafe extern "C" {
-    fn _getch()->c_int;
+    fn _getch() -> c_int;
 }
 
 #[repr(u8)]
@@ -60,7 +65,7 @@ pub fn do_patch_internal(config: &PatcherConfig) -> PatcherResult {
 
     let mut input_file_buffer = Vec::new();
     match input_file.read_to_end(&mut input_file_buffer) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             println!("Failed to read {}: {}", config.input_filename, e);
         }
@@ -81,7 +86,7 @@ pub fn do_patch_internal(config: &PatcherConfig) -> PatcherResult {
         None => {
             println!("Unexpected input size: {} bytes", input_file_buffer.len());
             return PatcherResult::Failure;
-        },
+        }
     };
 
     // get checksum of data
@@ -107,18 +112,23 @@ pub fn do_patch_internal(config: &PatcherConfig) -> PatcherResult {
         Err(e) => {
             println!("Patch failed: {:?}!", e);
             return PatcherResult::Failure;
-        },
+        }
     };
 
     // test output crc
     let actual_output_crc = crc32(&output_buffer);
     match expected_output_crc {
-        Some(v) => if actual_output_crc != v {
-            println!("Unexpected output crc {:#010x} for input crc {:#010x}!", actual_output_crc, input_crc);
-        },
+        Some(v) => {
+            if actual_output_crc != v {
+                println!(
+                    "Unexpected output crc {:#010x} for input crc {:#010x}!",
+                    actual_output_crc, input_crc
+                );
+            }
+        }
         None => {
             println!("Output crc: {:#010x}", actual_output_crc);
-        },
+        }
     }
 
     // open and write output file
@@ -127,13 +137,16 @@ pub fn do_patch_internal(config: &PatcherConfig) -> PatcherResult {
     let mut output_file = match File::create(Path::new(config.output_filename)) {
         Ok(v) => v,
         Err(e) => {
-            println!("Failed to open {} for writing: {}", config.output_filename, e);
+            println!(
+                "Failed to open {} for writing: {}",
+                config.output_filename, e
+            );
             return PatcherResult::Failure;
         }
     };
 
     match output_file.write_all(&output_buffer) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             println!("Failed to write {}: {}", config.output_filename, e);
         }
@@ -148,13 +161,13 @@ pub fn do_patch(config: &PatcherConfig) -> PatcherResult {
     match result {
         PatcherResult::Success => {
             println!("Patch successful!");
-        },
+        }
         PatcherResult::Failure => {
             println!("Patch failed!");
             if !config.failure_hint.is_empty() {
                 println!("{}", config.failure_hint);
             }
-        },
+        }
     }
     pause_for_key();
 

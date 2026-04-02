@@ -1,7 +1,7 @@
 use std::cell::UnsafeCell;
 
 #[repr(transparent)]
-pub struct SyncUnsafeCell<T> (pub UnsafeCell<T>);
+pub struct SyncUnsafeCell<T>(pub UnsafeCell<T>);
 
 unsafe impl<T: Sync> Sync for SyncUnsafeCell<T> {}
 

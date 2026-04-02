@@ -1,12 +1,31 @@
 use std::{ffi::c_void, mem::MaybeUninit};
 
-use windows::{Win32::{Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM}, Graphics::Gdi::{BeginPaint, COLOR_WINDOW, CreateFontW, DEFAULT_GUI_FONT, EndPaint, FillRect, GetObjectW, GetStockObject, HBRUSH, HFONT, LOGFONTW, PAINTSTRUCT, ValidateRect}, System::LibraryLoader::GetModuleHandleW, UI::{Controls::{ICC_TAB_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx}, WindowsAndMessaging::{CS_HREDRAW, CS_VREDRAW, DefWindowProcW, DispatchMessageW, GetMessageW, MSG, PostQuitMessage, RegisterClassW, SW_NORMAL, ShowWindow, TranslateMessage, UnregisterClassW, WM_DESTROY, WM_PAINT, WNDCLASSW}}}, core::{PCWSTR, w}};
+use windows::{
+    Win32::{
+        Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
+        Graphics::Gdi::{
+            BeginPaint, COLOR_WINDOW, CreateFontW, DEFAULT_GUI_FONT, EndPaint, FillRect,
+            GetObjectW, GetStockObject, HBRUSH, HFONT, LOGFONTW, PAINTSTRUCT, ValidateRect,
+        },
+        System::LibraryLoader::GetModuleHandleW,
+        UI::{
+            Controls::{ICC_TAB_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx},
+            WindowsAndMessaging::{
+                CS_HREDRAW, CS_VREDRAW, DefWindowProcW, DispatchMessageW, GetMessageW, MSG,
+                PostQuitMessage, RegisterClassW, SW_NORMAL, ShowWindow, TranslateMessage,
+                UnregisterClassW, WM_DESTROY, WM_PAINT, WNDCLASSW,
+            },
+        },
+    },
+    core::{PCWSTR, w},
+};
 
 use crate::{syncunsafecell::SyncUnsafeCell, win32::button::Button};
 
 use super::window::Window;
 
-pub static FONT_CONTEXT: SyncUnsafeCell<MaybeUninit<Fonts>> = SyncUnsafeCell::new(MaybeUninit::uninit());
+pub static FONT_CONTEXT: SyncUnsafeCell<MaybeUninit<Fonts>> =
+    SyncUnsafeCell::new(MaybeUninit::uninit());
 
 pub struct Fonts {
     /// Unscaled copy of the default GUI font, for layout calculation purposes.
@@ -22,9 +41,9 @@ impl Fonts {
         unsafe {
             let mut lf = LOGFONTW::default();
             let _ = GetObjectW(
-                GetStockObject(DEFAULT_GUI_FONT), 
-                size_of::<LOGFONTW>() as i32, 
-                Some(&raw mut lf as *mut c_void)
+                GetStockObject(DEFAULT_GUI_FONT),
+                size_of::<LOGFONTW>() as i32,
+                Some(&raw mut lf as *mut c_void),
             );
             let default_font = CreateFontW(
                 lf.lfHeight,
@@ -73,7 +92,7 @@ pub static APP_CONTEXT: SyncUnsafeCell<Option<AppContext>> = SyncUnsafeCell::new
 pub struct AppContext {
     instance: HINSTANCE,
 
-    window: Window,
+    wndproc: Box<dyn FnMut(HWND, u32, WPARAM, LPARAM) -> LRESULT>,
 }
 
 unsafe impl Sync for AppContext {}
@@ -126,7 +145,12 @@ impl App {
             let window = Window::new(window_class);
 
             let ctx = &mut *APP_CONTEXT.get();
-            *ctx = Some(AppContext { instance: instance.into(), window });
+            *ctx = Some(AppContext {
+                instance: instance.into(),
+                wndproc: Box::new(move |hwnd, msg, wparam, lparam| {
+                    window.wndproc(hwnd, msg, wparam, lparam)
+                }),
+            });
 
             // once everything has been created, show the window for force a repaint
             //let _ = ShowWindow(window.get_hwnd(), SW_NORMAL);
@@ -148,8 +172,8 @@ extern "system" fn wndproc(window: HWND, msg: u32, wparam: WPARAM, lparam: LPARA
         let ctx = &mut *APP_CONTEXT.get();
 
         match ctx {
-            Some(v) => v.window.wndproc(window, msg, wparam, lparam),
-            None => DefWindowProcW(window, msg, wparam, lparam)
+            Some(v) => (*v.wndproc)(window, msg, wparam, lparam),
+            None => DefWindowProcW(window, msg, wparam, lparam),
         }
     }
 }

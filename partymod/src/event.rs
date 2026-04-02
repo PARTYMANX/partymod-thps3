@@ -2,11 +2,13 @@ use partymod_common::patch;
 
 use crate::sdl;
 
-pub static mut EVENT_MANAGER_CONTEXT: std::mem::MaybeUninit<partymod_common::event::EventManager> = std::mem::MaybeUninit::uninit();
+pub static mut EVENT_MANAGER_CONTEXT: std::mem::MaybeUninit<partymod_common::event::EventManager> =
+    std::mem::MaybeUninit::uninit();
 
 pub fn init() {
     unsafe {
-        EVENT_MANAGER_CONTEXT = std::mem::MaybeUninit::new(partymod_common::event::EventManager::new());
+        EVENT_MANAGER_CONTEXT =
+            std::mem::MaybeUninit::new(partymod_common::event::EventManager::new());
     }
 }
 

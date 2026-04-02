@@ -11,7 +11,8 @@ pub struct WindowContext {
     res_y: u32,
 }
 
-pub static mut WINDOW_CONTEXT: std::mem::MaybeUninit<WindowContext> = std::mem::MaybeUninit::uninit();
+pub static mut WINDOW_CONTEXT: std::mem::MaybeUninit<WindowContext> =
+    std::mem::MaybeUninit::uninit();
 
 pub fn init() {
     let is_windowed = config::get_config_bool("Graphics", "Windowed", true);
@@ -20,7 +21,7 @@ pub fn init() {
     let res_y = config::get_config_int("Graphics", "ResolutionY", 480);
 
     unsafe {
-        WINDOW_CONTEXT = std::mem::MaybeUninit::new(WindowContext { 
+        WINDOW_CONTEXT = std::mem::MaybeUninit::new(WindowContext {
             window: None,
             is_windowed,
             is_borderless,
@@ -49,24 +50,22 @@ pub fn init_settings() {
 
 pub fn handle_event(e: &sdl3::event::Event) {
     match e {
-        sdl3::event::Event::Window { timestamp: _, window_id: _, win_event } => {
-            match win_event {
-                sdl3::event::WindowEvent::FocusGained => {
-                    unsafe {
-                        let is_focused = 0x00850f74 as *mut bool;
-                        *is_focused = true;
-                    }
-                },
-                sdl3::event::WindowEvent::FocusLost => {
-                    unsafe {
-                        let is_focused = 0x00850f74 as *mut bool;
-                        *is_focused = false;
-                    }
-                },
-                _ => {},
-            }
+        sdl3::event::Event::Window {
+            timestamp: _,
+            window_id: _,
+            win_event,
+        } => match win_event {
+            sdl3::event::WindowEvent::FocusGained => unsafe {
+                let is_focused = 0x00850f74 as *mut bool;
+                *is_focused = true;
+            },
+            sdl3::event::WindowEvent::FocusLost => unsafe {
+                let is_focused = 0x00850f74 as *mut bool;
+                *is_focused = false;
+            },
+            _ => {}
         },
-        _ => {},
+        _ => {}
     }
 }
 
@@ -95,7 +94,10 @@ extern "C" fn get_or_create_window() -> isize {
 
         #[allow(static_mut_refs)]
         let mut window_builder = unsafe {
-            SDL_CONTEXT.assume_init_ref().video_subsystem.window("THPS3 - PARTYMOD", res_x, res_y)
+            SDL_CONTEXT
+                .assume_init_ref()
+                .video_subsystem
+                .window("THPS3 - PARTYMOD", res_x, res_y)
         };
 
         window_builder.position_centered().high_pixel_density();
@@ -116,8 +118,8 @@ extern "C" fn get_or_create_window() -> isize {
         match window.window_handle().unwrap().as_raw() {
             raw_window_handle::RawWindowHandle::Win32(handle) => {
                 unsafe { *hwnd = handle.hwnd.get() };
-            },
-            _ => unreachable!("Got non-windows window handle!")
+            }
+            _ => unreachable!("Got non-windows window handle!"),
         }
     }
 
