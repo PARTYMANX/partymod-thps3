@@ -1,4 +1,4 @@
-use std::ffi::c_void;
+use std::{cell::RefCell, ffi::c_void, rc::Rc};
 
 use windows::{
     Win32::{
@@ -14,20 +14,20 @@ use windows::{
 
 use crate::win32::button::Button;
 
-pub enum Component {
-    Button(Button),
+pub enum Component<T> {
+    Button(Button<T>),
 }
 
-pub struct Window {
-    hwnd: HWND,
+pub struct Window<T> {
+    _hwnd: HWND,
 
     // TODO: list of components (or more likely, a generational arena)
-    components: Vec<Component>,
+    components: Vec<Component<T>>,
     // TODO: tree of objects to determine layout
 }
 
-impl Window {
-    pub fn new(window_class: PCWSTR) -> Self {
+impl<T> Window<T> {
+    pub fn new(window_class: PCWSTR, button_press: fn(&mut T)) -> Self {
         let window = unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
@@ -46,20 +46,23 @@ impl Window {
             .unwrap()
         };
 
-        let button = Button::new(window, || println!("Pressed me!"));
+        let button = Button::new(
+            window, 
+            button_press,
+        );
 
         Self {
-            hwnd: window,
+            _hwnd: window,
 
             components: vec![Component::Button(button)],
         }
     }
 
     pub fn get_hwnd(&self) -> HWND {
-        self.hwnd
+        self._hwnd
     }
 
-    pub fn wndproc(&self, window: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    pub fn wndproc(&self, state: &mut T, window: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         unsafe {
             match msg {
                 WM_DESTROY => {
@@ -82,7 +85,7 @@ impl Window {
                     for c in &self.components {
                         result = match c {
                             Component::Button(button) => {
-                                button.wndproc(window, msg, wparam, lparam)
+                                button.wndproc(state, window, msg, wparam, lparam)
                             }
                         };
 

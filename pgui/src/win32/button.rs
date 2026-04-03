@@ -1,4 +1,4 @@
-use std::ffi::c_void;
+use std::{cell::RefCell, ffi::c_void, rc::Rc};
 
 use windows::{
     Win32::{
@@ -7,7 +7,7 @@ use windows::{
         UI::{
             Controls::WC_BUTTONW,
             WindowsAndMessaging::{
-                BS_PUSHBUTTON, CreateWindowExW, HMENU, SW_NORMAL, SendMessageW, ShowWindow,
+                BS_PUSHBUTTON, CreateWindowExW, HMENU, SendMessageW,
                 WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_SETFONT, WS_CHILD, WS_TABSTOP,
                 WS_VISIBLE,
             },
@@ -16,18 +16,15 @@ use windows::{
     core::w,
 };
 
-use crate::win32::{
-    app::FONT_CONTEXT,
-    window::{self, Window},
-};
+use crate::win32::app::FONT_CONTEXT;
 
-pub struct Button {
-    hwnd: HWND,
-    on_pressed: fn(),
+pub struct Button<T> {
+    _hwnd: HWND,
+    on_pressed: fn(&mut T),
 }
 
-impl Button {
-    pub fn new(window: HWND, on_pressed: fn()) -> Self {
+impl<T> Button<T> {
+    pub fn new(window: HWND, on_pressed: fn(&mut T)) -> Self {
         let hwnd = unsafe {
             let label = w!("Button LONGER TEXT");
 
@@ -72,19 +69,20 @@ impl Button {
             hwnd
         };
 
-        Self { hwnd, on_pressed }
+        Self { _hwnd: hwnd, on_pressed }
     }
 
     pub fn get_hwnd(&self) -> HWND {
-        self.hwnd
+        self._hwnd
     }
 
     pub fn wndproc(
         &self,
-        window: HWND,
+        state: &mut T,
+        _hwnd: HWND,
         msg: u32,
         wparam: WPARAM,
-        lparam: LPARAM,
+        _lparam: LPARAM,
     ) -> Option<LRESULT> {
         match msg {
             WM_COMMAND => {
@@ -93,7 +91,7 @@ impl Button {
                 println!("ID: {}", id);
 
                 if id == 1 {
-                    (self.on_pressed)();
+                    (self.on_pressed)(state);
                     Some(LRESULT(0))
                 } else {
                     None

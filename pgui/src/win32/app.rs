@@ -4,23 +4,23 @@ use windows::{
     Win32::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
         Graphics::Gdi::{
-            BeginPaint, COLOR_WINDOW, CreateFontW, DEFAULT_GUI_FONT, EndPaint, FillRect,
-            GetObjectW, GetStockObject, HBRUSH, HFONT, LOGFONTW, PAINTSTRUCT, ValidateRect,
+            CreateFontW, DEFAULT_GUI_FONT,
+            GetObjectW, GetStockObject, HFONT, LOGFONTW,
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::{
             Controls::{ICC_TAB_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx},
             WindowsAndMessaging::{
                 CS_HREDRAW, CS_VREDRAW, DefWindowProcW, DispatchMessageW, GetMessageW, MSG,
-                PostQuitMessage, RegisterClassW, SW_NORMAL, ShowWindow, TranslateMessage,
-                UnregisterClassW, WM_DESTROY, WM_PAINT, WNDCLASSW,
+                RegisterClassW, TranslateMessage,
+                UnregisterClassW, WNDCLASSW,
             },
         },
     },
     core::{PCWSTR, w},
 };
 
-use crate::{syncunsafecell::SyncUnsafeCell, win32::button::Button};
+use crate::syncunsafecell::SyncUnsafeCell;
 
 use super::window::Window;
 
@@ -90,80 +90,73 @@ impl Fonts {
 pub static APP_CONTEXT: SyncUnsafeCell<Option<AppContext>> = SyncUnsafeCell::new(None);
 
 pub struct AppContext {
-    instance: HINSTANCE,
+    _instance: HINSTANCE,
 
     wndproc: Box<dyn FnMut(HWND, u32, WPARAM, LPARAM) -> LRESULT>,
 }
 
 unsafe impl Sync for AppContext {}
 
-pub struct App {
-    instance: HINSTANCE,
+pub fn run<T: 'static>(mut state: T, button_press: fn(&mut T)) {
+    unsafe {
+        // TODO: some sort of global setup?
 
-    root_window: Window,
-}
+        let icex = INITCOMMONCONTROLSEX {
+            dwICC: ICC_TAB_CLASSES,
+            ..Default::default()
+        };
+        let _ = InitCommonControlsEx(&icex);
 
-impl App {
-    pub fn run() {
-        unsafe {
-            // TODO: some sort of global setup?
+        let fonts = Fonts::new();
 
-            let icex = INITCOMMONCONTROLSEX {
-                dwICC: ICC_TAB_CLASSES,
-                ..Default::default()
-            };
-            let _ = InitCommonControlsEx(&icex);
+        let ctx = &mut *FONT_CONTEXT.get();
 
-            let fonts = Fonts::new();
+        ctx.write(fonts);
+    }
 
-            let ctx = &mut *FONT_CONTEXT.get();
+    // TODO: get default font
 
-            ctx.write(fonts);
+    //MessageBoxA(None, s!("Ansi"), s!("World"), MB_OK);
+    //ShellMessageBoxW(None, None, w!("Wide"), w!("World"), MB_ICONERROR);
+
+    unsafe {
+        let instance = GetModuleHandleW(None).unwrap();
+        let window_class = w!("pgui_window");
+
+        let wc = WNDCLASSW {
+            //hCursor: LoadCursorW(None, IDC_ARROW).unwrap(),
+            hInstance: instance.into(),
+            lpszClassName: window_class,
+
+            style: CS_HREDRAW | CS_VREDRAW,
+            lpfnWndProc: Some(wndproc),
+            ..Default::default()
+        };
+
+        let _atom = RegisterClassW(&wc);
+
+        let window = Window::new(window_class, button_press);
+
+        let ctx = &mut *APP_CONTEXT.get();
+        *ctx = Some(AppContext {
+            _instance: instance.into(),
+            wndproc: Box::new(move |hwnd, msg, wparam, lparam| {
+                window.wndproc(&mut state, hwnd, msg, wparam, lparam)
+            }),
+        });
+
+        // Run the event loop.
+
+        let mut message = MSG::default();
+
+        while GetMessageW(&mut message, None, 0, 0).into() {
+            let _ = TranslateMessage(&message);
+            DispatchMessageW(&message);
         }
 
-        // TODO: get default font
+        // App terminating, unregister the class.
 
-        //MessageBoxA(None, s!("Ansi"), s!("World"), MB_OK);
-        //ShellMessageBoxW(None, None, w!("Wide"), w!("World"), MB_ICONERROR);
-
-        unsafe {
-            let instance = GetModuleHandleW(None).unwrap();
-            let window_class = w!("pgui_window");
-
-            let wc = WNDCLASSW {
-                //hCursor: LoadCursorW(None, IDC_ARROW).unwrap(),
-                hInstance: instance.into(),
-                lpszClassName: window_class,
-
-                style: CS_HREDRAW | CS_VREDRAW,
-                lpfnWndProc: Some(wndproc),
-                ..Default::default()
-            };
-
-            let _atom = RegisterClassW(&wc);
-
-            let window = Window::new(window_class);
-
-            let ctx = &mut *APP_CONTEXT.get();
-            *ctx = Some(AppContext {
-                instance: instance.into(),
-                wndproc: Box::new(move |hwnd, msg, wparam, lparam| {
-                    window.wndproc(hwnd, msg, wparam, lparam)
-                }),
-            });
-
-            // once everything has been created, show the window for force a repaint
-            //let _ = ShowWindow(window.get_hwnd(), SW_NORMAL);
-
-            let mut message = MSG::default();
-
-            while GetMessageW(&mut message, None, 0, 0).into() {
-                let _ = TranslateMessage(&message);
-                DispatchMessageW(&message);
-            }
-
-            let _ = UnregisterClassW(window_class, Some(instance.into()));
-        }
+        let _ = UnregisterClassW(window_class, Some(instance.into()));
     }
 }
 
