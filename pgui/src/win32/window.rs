@@ -27,7 +27,7 @@ pub struct Window<T> {
 }
 
 impl<T> Window<T> {
-    pub fn new(window_class: PCWSTR, button_press: fn(&mut T)) -> Self {
+    pub fn new(window_class: PCWSTR, components: &[crate::component::Component<T>]) -> Self {
         let window = unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
@@ -46,15 +46,24 @@ impl<T> Window<T> {
             .unwrap()
         };
 
-        let button = Button::new(
-            window, 
-            button_press,
-        );
+        let mut native_components = Vec::new();
+
+        for component in components {
+            let native_component = match component {
+                crate::component::Component::Button(button) => Component::Button(Button::new(
+                    window,
+                    (native_components.len() + 1) as u16,
+                    button.on_press.unwrap(),
+                ))
+            };
+
+            native_components.push(native_component);
+        }
 
         Self {
             _hwnd: window,
 
-            components: vec![Component::Button(button)],
+            components: native_components,
         }
     }
 

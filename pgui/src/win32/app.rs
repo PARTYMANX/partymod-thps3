@@ -11,9 +11,7 @@ use windows::{
         UI::{
             Controls::{ICC_TAB_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx},
             WindowsAndMessaging::{
-                CS_HREDRAW, CS_VREDRAW, DefWindowProcW, DispatchMessageW, GetMessageW, MSG,
-                RegisterClassW, TranslateMessage,
-                UnregisterClassW, WNDCLASSW,
+                CS_HREDRAW, CS_VREDRAW, DefWindowProcW, DispatchMessageW, GetMessageW, IDC_ARROW, LoadCursorW, MSG, RegisterClassW, TranslateMessage, UnregisterClassW, WNDCLASSW
             },
         },
     },
@@ -97,7 +95,7 @@ pub struct AppContext {
 
 unsafe impl Sync for AppContext {}
 
-pub fn run<T: 'static>(mut state: T, button_press: fn(&mut T)) {
+pub fn run<T: 'static>(mut state: T, component: &[crate::component::Component<T>]) {
     unsafe {
         // TODO: some sort of global setup?
 
@@ -124,7 +122,7 @@ pub fn run<T: 'static>(mut state: T, button_press: fn(&mut T)) {
         let window_class = w!("pgui_window");
 
         let wc = WNDCLASSW {
-            //hCursor: LoadCursorW(None, IDC_ARROW).unwrap(),
+            hCursor: LoadCursorW(None, IDC_ARROW).unwrap(),
             hInstance: instance.into(),
             lpszClassName: window_class,
 
@@ -135,7 +133,7 @@ pub fn run<T: 'static>(mut state: T, button_press: fn(&mut T)) {
 
         let _atom = RegisterClassW(&wc);
 
-        let window = Window::new(window_class, button_press);
+        let window = Window::new(window_class, component);
 
         let ctx = &mut *APP_CONTEXT.get();
         *ctx = Some(AppContext {

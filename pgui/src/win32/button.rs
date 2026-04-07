@@ -24,7 +24,7 @@ pub struct Button<T> {
 }
 
 impl<T> Button<T> {
-    pub fn new(window: HWND, on_pressed: fn(&mut T)) -> Self {
+    pub fn new(window: HWND, id: u16, on_pressed: fn(&mut T)) -> Self {
         let hwnd = unsafe {
             let label = w!("Button LONGER TEXT");
 
@@ -50,7 +50,7 @@ impl<T> Button<T> {
                 size.cx + 32,
                 size.cy + 16,
                 Some(window),
-                Some(HMENU(1 as *mut c_void)),
+                Some(HMENU(id as *mut c_void)),
                 None,
                 None,
             )
@@ -70,10 +70,6 @@ impl<T> Button<T> {
         };
 
         Self { _hwnd: hwnd, on_pressed }
-    }
-
-    pub fn get_hwnd(&self) -> HWND {
-        self._hwnd
     }
 
     pub fn wndproc(
