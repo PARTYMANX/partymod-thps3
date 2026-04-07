@@ -1,5 +1,5 @@
 pub enum Component<T> {
-    Button(crate::button::Button<T>)
+    Button(crate::button::Button<T>),
 }
 
 impl<T> From<crate::button::Button<T>> for Component<T> {

@@ -4,14 +4,14 @@ use windows::{
     Win32::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
         Graphics::Gdi::{
-            CreateFontW, DEFAULT_GUI_FONT,
-            GetObjectW, GetStockObject, HFONT, LOGFONTW,
+            CreateFontW, DEFAULT_GUI_FONT, GetObjectW, GetStockObject, HFONT, LOGFONTW,
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::{
             Controls::{ICC_TAB_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx},
             WindowsAndMessaging::{
-                CS_HREDRAW, CS_VREDRAW, DefWindowProcW, DispatchMessageW, GetMessageW, IDC_ARROW, LoadCursorW, MSG, RegisterClassW, TranslateMessage, UnregisterClassW, WNDCLASSW
+                CS_HREDRAW, CS_VREDRAW, DefWindowProcW, DispatchMessageW, GetMessageW, IDC_ARROW,
+                LoadCursorW, MSG, RegisterClassW, TranslateMessage, UnregisterClassW, WNDCLASSW,
             },
         },
     },

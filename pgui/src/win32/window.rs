@@ -1,4 +1,4 @@
-use std::{cell::RefCell, ffi::c_void, rc::Rc};
+use std::ffi::c_void;
 
 use windows::{
     Win32::{
@@ -53,8 +53,9 @@ impl<T> Window<T> {
                 crate::component::Component::Button(button) => Component::Button(Button::new(
                     window,
                     (native_components.len() + 1) as u16,
+                    button.label.clone(),
                     button.on_press.unwrap(),
-                ))
+                )),
             };
 
             native_components.push(native_component);
@@ -67,11 +68,14 @@ impl<T> Window<T> {
         }
     }
 
-    pub fn get_hwnd(&self) -> HWND {
-        self._hwnd
-    }
-
-    pub fn wndproc(&self, state: &mut T, window: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    pub fn wndproc(
+        &self,
+        state: &mut T,
+        window: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
         unsafe {
             match msg {
                 WM_DESTROY => {
