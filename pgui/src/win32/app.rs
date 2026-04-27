@@ -95,7 +95,7 @@ pub struct AppContext {
 
 unsafe impl Sync for AppContext {}
 
-pub fn run<T: 'static>(mut state: T, component: &[crate::component::Component<T>]) {
+pub fn run<T: 'static>(mut state: T, component: crate::component::Component<T>) {
     unsafe {
         // TODO: some sort of global setup?
 

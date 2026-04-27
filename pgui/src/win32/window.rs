@@ -12,7 +12,7 @@ use windows::{
     core::{PCWSTR, w},
 };
 
-use crate::win32::button::Button;
+use crate::{genarena::GenArenaKey, layout::{Layout, Position}, win32::button::Button};
 
 pub enum Component<T> {
     Button(Button<T>),
@@ -23,11 +23,12 @@ pub struct Window<T> {
 
     // TODO: list of components (or more likely, a generational arena)
     components: Vec<Component<T>>,
+    layout: Layout,
     // TODO: tree of objects to determine layout
 }
 
 impl<T> Window<T> {
-    pub fn new(window_class: PCWSTR, components: &[crate::component::Component<T>]) -> Self {
+    pub fn new(window_class: PCWSTR, component: crate::component::Component<T>) -> Self {
         let window = unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
@@ -47,26 +48,119 @@ impl<T> Window<T> {
         };
 
         let mut native_components = Vec::new();
+        let mut layout = Layout::new(640, 480);
 
-        for component in components {
-            let native_component = match component {
-                crate::component::Component::Button(button) => Component::Button(Button::new(
-                    window,
-                    (native_components.len() + 1) as u16,
-                    button.label.clone(),
-                    button.on_press.unwrap(),
-                )),
-            };
+        let root_node = layout.get_root_node();
+        Self::create_components(
+            window,
+            component,
+            &mut native_components,
+            &mut layout,
+            root_node,
+        );
 
-            native_components.push(native_component);
+        layout.calculate_coords();
+
+        for native_component in &mut native_components {
+            match native_component {
+                Component::Button(button) => button.update(&mut layout),
+            }
         }
 
         Self {
             _hwnd: window,
 
             components: native_components,
+            layout,
         }
     }
+
+    fn create_components(window: HWND, component: crate::component::Component<T>, native_components: &mut Vec<Component<T>>, layout: &mut Layout, layout_parent: GenArenaKey) {
+        match component {
+            crate::component::Component::Button(button) => {
+                let button = Component::Button(Button::new(
+                    window,
+                    (native_components.len() + 1) as u16,
+                    button.label.clone(),
+                    button.on_press.unwrap(),
+                    layout_parent, 
+                    Position {
+                        w: crate::layout::Size::Min(0),
+                        h: crate::layout::Size::Min(0),
+                        x: crate::layout::HorizontalOffset::AlignLeft(0),
+                        y: crate::layout::VerticalOffset::AlignTop(0),
+                    },
+                    layout,
+                ));
+
+                native_components.push(button);
+            },
+            crate::component::Component::Container(container) => {
+                let node = layout.add_node(
+                    layout_parent,
+                    crate::layout::LayoutNodeType::Container,
+                    Position {
+                        w: crate::layout::Size::Min(0),
+                        h: crate::layout::Size::Min(0),
+                        x: crate::layout::HorizontalOffset::AlignLeft(0),
+                        y: crate::layout::VerticalOffset::AlignTop(0),
+                    },
+                );
+
+                Self::create_components(
+                    window,
+                    *container.child,
+                    native_components,
+                    layout,
+                    node,
+                );
+            },
+            crate::component::Component::Horizontal(horizontal) => {
+                let node = layout.add_node(
+                    layout_parent,
+                    crate::layout::LayoutNodeType::HorizontalGroup,
+                    Position {
+                        w: crate::layout::Size::Min(0),
+                        h: crate::layout::Size::Min(0),
+                        x: crate::layout::HorizontalOffset::AlignLeft(0),
+                        y: crate::layout::VerticalOffset::AlignTop(0),
+                    },
+                );
+
+                for child in horizontal.children {
+                    Self::create_components(
+                        window,
+                        child,
+                        native_components,
+                        layout,
+                        node,
+                    );
+                }
+            },
+            crate::component::Component::Vertical(vertical) => {
+                let node = layout.add_node(
+                    layout_parent,
+                    crate::layout::LayoutNodeType::VerticalGroup,
+                    Position {
+                        w: crate::layout::Size::Min(0),
+                        h: crate::layout::Size::Min(0),
+                        x: crate::layout::HorizontalOffset::AlignLeft(0),
+                        y: crate::layout::VerticalOffset::AlignTop(0),
+                    },
+                );
+
+                for child in vertical.children {
+                    Self::create_components(
+                        window,
+                        child,
+                        native_components,
+                        layout,
+                        node,
+                    );
+                }
+            },
+        }
+    } 
 
     pub fn wndproc(
         &self,

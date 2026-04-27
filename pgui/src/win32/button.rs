@@ -7,39 +7,52 @@ use windows::{
         UI::{
             Controls::WC_BUTTONW,
             WindowsAndMessaging::{
-                BS_PUSHBUTTON, CreateWindowExW, HMENU, SendMessageW, WINDOW_EX_STYLE, WINDOW_STYLE,
-                WM_COMMAND, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE,
+                BS_PUSHBUTTON, CreateWindowExW, HMENU, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE
             },
         },
     },
     core::HSTRING,
 };
 
-use crate::win32::app::FONT_CONTEXT;
+use crate::{genarena::GenArenaKey, layout::{Coords, Layout, Position, Size}, win32::app::FONT_CONTEXT};
 
 pub struct Button<T> {
     _hwnd: HWND,
     id: u16,
     _label: HSTRING,
     on_pressed: fn(&mut T),
+    layout_node: GenArenaKey,
+    coords: Option<Coords>,
 }
 
 impl<T> Button<T> {
-    pub fn new(window: HWND, id: u16, label: String, on_pressed: fn(&mut T)) -> Self {
+    pub fn new(window: HWND, id: u16, label: String, on_pressed: fn(&mut T), layout_parent: GenArenaKey, position: Position, layout: &mut Layout) -> Self {
         let label = HSTRING::from(label);
         //let utf16_label = label.encode_utf16().collect();
 
         //PCWSTR::from(utf16_label);
 
-        let hwnd = unsafe {
+        let (hwnd, layout_node) = unsafe {
             let font_ctx = (&*FONT_CONTEXT.get()).assume_init_ref();
 
             // get size of label (this could probably be moved elsewhere since i assume it'll get reused)
             let hdc = GetDC(None);
             let _ = SelectObject(hdc, font_ctx.default_font.into());
-            let mut size = SIZE::default();
-            let _ = GetTextExtentPoint32W(hdc, &label, &mut size);
+            let mut text_size = SIZE::default();
+            let _ = GetTextExtentPoint32W(hdc, &label, &mut text_size);
             ReleaseDC(None, hdc);
+
+            let width = match position.w {
+                Size::Fill(_) => todo!(),
+                Size::Min(_) => text_size.cx as u32 + 32,
+                Size::Exact(v) => v,
+            };
+
+            let height = match position.h {
+                Size::Fill(_) => todo!(),
+                Size::Min(_) => text_size.cy as u32 + 16,
+                Size::Exact(v) => v,
+            };
 
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
@@ -51,14 +64,34 @@ impl<T> Button<T> {
                     | WINDOW_STYLE(BS_PUSHBUTTON.try_into().unwrap()),
                 0,
                 0,
-                size.cx + 32,
-                size.cy + 16,
+                width as i32,
+                height as i32,
                 Some(window),
                 Some(HMENU(id as *mut c_void)),
                 None,
                 None,
             )
             .unwrap();
+
+            let layout_node = layout.add_node(
+                layout_parent,
+                crate::layout::LayoutNodeType::Leaf,
+                Position { 
+                    w: match position.w {
+                        Size::Fill(v) => Size::Fill(v),
+                        Size::Exact(v) => Size::Exact(v),
+                        Size::Min(_) => Size::Exact(width),
+                    },
+                    h: match position.h {
+                        Size::Fill(v) => Size::Fill(v),
+                        Size::Exact(v) => Size::Exact(v),
+                        Size::Min(_) => Size::Exact(height),
+                    },
+                    x: position.x,
+                    y: position.y,
+                }
+
+            );
 
             // set the font to the correct one
             SendMessageW(
@@ -70,7 +103,7 @@ impl<T> Button<T> {
 
             //let _ = ShowWindow(hwnd, SW_NORMAL);
 
-            hwnd
+            (hwnd, layout_node)
         };
 
         Self {
@@ -78,6 +111,29 @@ impl<T> Button<T> {
             id,
             _label: label,
             on_pressed,
+            layout_node,
+            coords: None,
+        }
+    }
+
+    pub fn update(
+        &mut self,
+        layout: &mut Layout,
+    ) {
+        self.coords = layout.get_node_coords(self.layout_node);
+
+        if let Some(coords) = self.coords {
+            unsafe {
+                let _ = SetWindowPos(
+                    self._hwnd, 
+                    None, 
+                    coords.x, 
+                    coords.y, 
+                    coords.w as i32, 
+                    coords.h as i32, 
+                    SWP_NOZORDER | SWP_NOACTIVATE
+                );
+            }
         }
     }
 

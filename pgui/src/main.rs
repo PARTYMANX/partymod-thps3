@@ -1,7 +1,10 @@
 use crate::win32::app;
 
+mod layout;
 mod button;
 mod component;
+mod container;
+mod genarena;
 mod syncunsafecell;
 mod win32;
 
@@ -9,19 +12,19 @@ fn main() {
     let state = 0;
     app::run(
         state,
-        &vec![
-            button::button("+".to_string())
+        container::horizontal(vec![
+            button::button("👍".to_string())
                 .on_press(|st| {
                     *st += 1;
                     println!("Pressed {} times!", st);
                 })
                 .into(),
-            button::button("-".to_string())
+            button::button("👎".to_string())
                 .on_press(|st| {
                     *st -= 1;
                     println!("Pressed {} times!", st);
                 })
                 .into(),
-        ],
+        ]).into()
     );
 }
