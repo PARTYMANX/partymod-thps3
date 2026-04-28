@@ -16,6 +16,8 @@ impl Layout {
                 h: Size::Exact(height),
                 x: HorizontalOffset::AlignLeft(0),
                 y: VerticalOffset::AlignTop(0),
+                h_padding: 0,
+                v_padding: 0,
             },
             coords: None,
         };
@@ -44,8 +46,8 @@ impl Layout {
         let relatives = match ty {
             LayoutNodeType::Leaf => LayoutNodeRelatives::Leaf { parent },
             LayoutNodeType::Container => LayoutNodeRelatives::Container { parent, child: None },
-            LayoutNodeType::HorizontalGroup => LayoutNodeRelatives::HorizontalGroup { parent, children: Vec::new() },
-            LayoutNodeType::VerticalGroup => LayoutNodeRelatives::VerticalGroup { parent, children: Vec::new() },
+            LayoutNodeType::HorizontalGroup { spacing } => LayoutNodeRelatives::HorizontalGroup { parent, children: Vec::new(), spacing },
+            LayoutNodeType::VerticalGroup { spacing } => LayoutNodeRelatives::VerticalGroup { parent, children: Vec::new(), spacing },
         };
 
         let node = LayoutNode {
@@ -66,10 +68,10 @@ impl Layout {
             LayoutNodeRelatives::Container { parent: _, child } => {
                 *child = Some(node_key);
             },
-            LayoutNodeRelatives::HorizontalGroup { parent: _, children } => {
+            LayoutNodeRelatives::HorizontalGroup { parent: _, children, spacing: _ } => {
                 children.push(node_key);
             },
-            LayoutNodeRelatives::VerticalGroup { parent: _, children } => {
+            LayoutNodeRelatives::VerticalGroup { parent: _, children, spacing: _ } => {
                 children.push(node_key);
             },
         }
@@ -105,12 +107,18 @@ impl Layout {
         // calculate our base bounds for this branch (this is our maximum allowed size)
         let mut coords = bounds;
 
+        coords.x += node.position.h_padding as i32;
+        coords.w -= node.position.h_padding * 2;
+
+        coords.y += node.position.v_padding as i32;
+        coords.h -= node.position.v_padding * 2;
+
         // TODO: calculate coords here!!!
         let is_exact_width = match node.position.w {
-            Size::Fill(min) => {
+            Size::Fill => {
                 true
             },
-            Size::Min(size) => {
+            Size::Min => {
                 false
             },
             Size::Exact(size) => {
@@ -121,10 +129,10 @@ impl Layout {
         };
 
         let is_exact_height = match node.position.h {
-            Size::Fill(min) => {
+            Size::Fill => {
                 true
             },
-            Size::Min(size) => {
+            Size::Min => {
                 false
             },
             Size::Exact(size) => {
@@ -138,16 +146,24 @@ impl Layout {
             HorizontalOffset::AlignLeft(position) => {
                 coords.x += position as i32;
             },
-            HorizontalOffset::Center => todo!(),
-            HorizontalOffset::AlignRight(position) => todo!(),
+            HorizontalOffset::Center => {
+                coords.x += ((bounds.w / 2) - (coords.w / 2)) as i32;
+            },
+            HorizontalOffset::AlignRight(position) => {
+                coords.x += (bounds.w - (coords.w + position)) as i32;
+            },
         }
 
         match node.position.y {
             VerticalOffset::AlignTop(position) => {
                 coords.y += position as i32;
             },
-            VerticalOffset::Center => todo!(),
-            VerticalOffset::AlignBottom(position) => todo!(),
+            VerticalOffset::Center => {
+                coords.y += ((bounds.h / 2) - (coords.h / 2)) as i32;
+            },
+            VerticalOffset::AlignBottom(position) => {
+                coords.y += (bounds.h - (coords.h + position)) as i32;
+            },
         }
 
         // TODO: only minimize size if not Size::Exact!
@@ -172,16 +188,17 @@ impl Layout {
                     }
                 }
             },
-            LayoutNodeRelatives::HorizontalGroup { parent: _, children } => {
+            LayoutNodeRelatives::HorizontalGroup { parent: _, children, spacing } => {
                 let mut bounds = coords;
                 let mut max_h = 0;
+                let space = *spacing;
 
                 // borrow checker gets mad if we use children directly
                 // ...so clone it. really bad stuff
                 for child_key in &children.clone() {
                     let child_coords = self.calculate_node_coords(*child_key, bounds);
 
-                    let shift_x = (child_coords.x - coords.x) + child_coords.w as i32;
+                    let shift_x = (child_coords.x - coords.x) + (child_coords.w + space) as i32;
                     bounds.x += shift_x;
                     bounds.w -= shift_x as u32;
 
@@ -199,16 +216,17 @@ impl Layout {
                     coords.h = max_h;
                 }
             },
-            LayoutNodeRelatives::VerticalGroup { parent: _, children } => {
+            LayoutNodeRelatives::VerticalGroup { parent: _, children, spacing } => {
                 let mut bounds = coords;
                 let mut max_w = 0;
+                let space = *spacing;
 
                 // borrow checker gets mad if we use children directly
                 // ...so clone it. really bad stuff
                 for child_key in &children.clone() {
                     let child_coords = self.calculate_node_coords(*child_key, bounds);
 
-                    let shift_y = (child_coords.y - coords.y) + child_coords.h as i32;
+                    let shift_y = (child_coords.y - coords.y) + (child_coords.h + space) as i32;
                     bounds.y += shift_y;
                     bounds.h -= shift_y as u32;
 
@@ -248,8 +266,8 @@ struct LayoutNode {
 pub enum LayoutNodeType {
     Leaf,
     Container,
-    HorizontalGroup,
-    VerticalGroup,
+    HorizontalGroup { spacing: u32 },
+    VerticalGroup { spacing: u32 },
 }
 
 enum LayoutNodeRelatives {
@@ -266,10 +284,12 @@ enum LayoutNodeRelatives {
     HorizontalGroup {
         parent: GenArenaKey,
         children: Vec<GenArenaKey>,
+        spacing: u32,
     },
     VerticalGroup {
         parent: GenArenaKey,
         children: Vec<GenArenaKey>,
+        spacing: u32,
     },
 }
 
@@ -280,6 +300,22 @@ pub struct Position {
 
     pub x: HorizontalOffset,
     pub y: VerticalOffset,
+
+    pub h_padding: u32,
+    pub v_padding: u32,
+}
+
+impl Default for Position {
+    fn default() -> Self {
+        Self {
+            w: Size::Min,
+            h: Size::Min,
+            x: HorizontalOffset::AlignLeft(0),
+            y: VerticalOffset::AlignTop(0),
+            h_padding: 0,
+            v_padding: 0,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -307,7 +343,7 @@ pub enum VerticalOffset {
 
 #[derive(Clone, Copy)]
 pub enum Size {
-    Fill(u32),
-    Min(u32),
+    Fill,
+    Min,
     Exact(u32),
 }

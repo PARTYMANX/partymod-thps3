@@ -43,14 +43,14 @@ impl<T> Button<T> {
             ReleaseDC(None, hdc);
 
             let width = match position.w {
-                Size::Fill(_) => todo!(),
-                Size::Min(_) => text_size.cx as u32 + 32,
+                Size::Fill => text_size.cx as u32 + 32,
+                Size::Min => text_size.cx as u32 + 32,
                 Size::Exact(v) => v,
             };
 
             let height = match position.h {
-                Size::Fill(_) => todo!(),
-                Size::Min(_) => text_size.cy as u32 + 16,
+                Size::Fill => text_size.cy as u32 + 16,
+                Size::Min => text_size.cy as u32 + 16,
                 Size::Exact(v) => v,
             };
 
@@ -78,17 +78,19 @@ impl<T> Button<T> {
                 crate::layout::LayoutNodeType::Leaf,
                 Position { 
                     w: match position.w {
-                        Size::Fill(v) => Size::Fill(v),
+                        Size::Fill => Size::Fill,
                         Size::Exact(v) => Size::Exact(v),
-                        Size::Min(_) => Size::Exact(width),
+                        Size::Min => Size::Exact(width),
                     },
                     h: match position.h {
-                        Size::Fill(v) => Size::Fill(v),
+                        Size::Fill => Size::Fill,
                         Size::Exact(v) => Size::Exact(v),
-                        Size::Min(_) => Size::Exact(height),
+                        Size::Min => Size::Exact(height),
                     },
                     x: position.x,
                     y: position.y,
+                    h_padding: position.h_padding,
+                    v_padding: position.v_padding,
                 }
 
             );

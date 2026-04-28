@@ -84,12 +84,7 @@ impl<T> Window<T> {
                     button.label.clone(),
                     button.on_press.unwrap(),
                     layout_parent, 
-                    Position {
-                        w: crate::layout::Size::Min(0),
-                        h: crate::layout::Size::Min(0),
-                        x: crate::layout::HorizontalOffset::AlignLeft(0),
-                        y: crate::layout::VerticalOffset::AlignTop(0),
-                    },
+                    button.position,
                     layout,
                 ));
 
@@ -99,12 +94,7 @@ impl<T> Window<T> {
                 let node = layout.add_node(
                     layout_parent,
                     crate::layout::LayoutNodeType::Container,
-                    Position {
-                        w: crate::layout::Size::Min(0),
-                        h: crate::layout::Size::Min(0),
-                        x: crate::layout::HorizontalOffset::AlignLeft(0),
-                        y: crate::layout::VerticalOffset::AlignTop(0),
-                    },
+                    container.position,
                 );
 
                 Self::create_components(
@@ -118,13 +108,10 @@ impl<T> Window<T> {
             crate::component::Component::Horizontal(horizontal) => {
                 let node = layout.add_node(
                     layout_parent,
-                    crate::layout::LayoutNodeType::HorizontalGroup,
-                    Position {
-                        w: crate::layout::Size::Min(0),
-                        h: crate::layout::Size::Min(0),
-                        x: crate::layout::HorizontalOffset::AlignLeft(0),
-                        y: crate::layout::VerticalOffset::AlignTop(0),
+                    crate::layout::LayoutNodeType::HorizontalGroup {
+                        spacing: horizontal.spacing,
                     },
+                    horizontal.position,
                 );
 
                 for child in horizontal.children {
@@ -140,13 +127,10 @@ impl<T> Window<T> {
             crate::component::Component::Vertical(vertical) => {
                 let node = layout.add_node(
                     layout_parent,
-                    crate::layout::LayoutNodeType::VerticalGroup,
-                    Position {
-                        w: crate::layout::Size::Min(0),
-                        h: crate::layout::Size::Min(0),
-                        x: crate::layout::HorizontalOffset::AlignLeft(0),
-                        y: crate::layout::VerticalOffset::AlignTop(0),
+                    crate::layout::LayoutNodeType::VerticalGroup {
+                        spacing: vertical.spacing,
                     },
+                    vertical.position,
                 );
 
                 for child in vertical.children {

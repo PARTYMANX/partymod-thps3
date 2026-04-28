@@ -25,6 +25,6 @@ fn main() {
                     println!("Pressed {} times!", st);
                 })
                 .into(),
-        ]).into()
+        ]).spacing(16).into()
     );
 }
