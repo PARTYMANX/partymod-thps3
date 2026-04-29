@@ -79,6 +79,8 @@ impl Layout {
         node_key
     }
 
+    // TODO: two pass coords: first calculate node offsets and sizes, then calculate absolute positions
+    // TODO: figure out how to get proportional sizing to coexist with absolute sizing (i.e. two proportionally sized groups above one absolute sized item)
     pub fn calculate_coords(&mut self) {
         let root_node_key = self.get_root_node();
 
@@ -200,7 +202,7 @@ impl Layout {
 
                     let shift_x = (child_coords.x - coords.x) + (child_coords.w + space) as i32;
                     bounds.x += shift_x;
-                    bounds.w -= shift_x as u32;
+                    bounds.w = bounds.w.saturating_sub(shift_x as u32);
 
                     let height = (child_coords.y - coords.y) + child_coords.h as i32;
 
@@ -228,7 +230,7 @@ impl Layout {
 
                     let shift_y = (child_coords.y - coords.y) + (child_coords.h + space) as i32;
                     bounds.y += shift_y;
-                    bounds.h -= shift_y as u32;
+                    bounds.h = bounds.h.saturating_sub(shift_y as u32);
 
                     let width = (child_coords.x - coords.x) + child_coords.w as i32;
 
@@ -318,7 +320,7 @@ impl Default for Position {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Coords {
     pub w: u32,
     pub h: u32,

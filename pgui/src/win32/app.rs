@@ -18,7 +18,7 @@ use windows::{
     core::{PCWSTR, w},
 };
 
-use crate::syncunsafecell::SyncUnsafeCell;
+use crate::{syncunsafecell::SyncUnsafeCell, window::WindowState};
 
 use super::window::Window;
 
@@ -95,7 +95,7 @@ pub struct AppContext {
 
 unsafe impl Sync for AppContext {}
 
-pub fn run<T: 'static>(mut state: T, component: crate::component::Component<T>) {
+pub fn run<T: 'static>(mut state: T, component: crate::component::Component<T>, window: WindowState) {
     unsafe {
         // TODO: some sort of global setup?
 
@@ -133,7 +133,7 @@ pub fn run<T: 'static>(mut state: T, component: crate::component::Component<T>) 
 
         let _atom = RegisterClassW(&wc);
 
-        let window = Window::new(window_class, component);
+        let window = Window::new(window_class, component, window.width, window.height, window.title);
 
         let ctx = &mut *APP_CONTEXT.get();
         *ctx = Some(AppContext {

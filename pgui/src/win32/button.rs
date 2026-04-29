@@ -20,13 +20,13 @@ pub struct Button<T> {
     _hwnd: HWND,
     id: u16,
     _label: HSTRING,
-    on_pressed: fn(&mut T),
+    on_pressed: Option<fn(&mut T)>,
     layout_node: GenArenaKey,
     coords: Option<Coords>,
 }
 
 impl<T> Button<T> {
-    pub fn new(window: HWND, id: u16, label: String, on_pressed: fn(&mut T), layout_parent: GenArenaKey, position: Position, layout: &mut Layout) -> Self {
+    pub fn new(window: HWND, id: u16, label: String, on_pressed: Option<fn(&mut T)>, layout_parent: GenArenaKey, position: Position, layout: &mut Layout) -> Self {
         let label = HSTRING::from(label);
         //let utf16_label = label.encode_utf16().collect();
 
@@ -122,24 +122,28 @@ impl<T> Button<T> {
         &mut self,
         layout: &mut Layout,
     ) {
-        self.coords = layout.get_node_coords(self.layout_node);
+        let new_coords = layout.get_node_coords(self.layout_node);
 
-        if let Some(coords) = self.coords {
-            unsafe {
-                let _ = SetWindowPos(
-                    self._hwnd, 
-                    None, 
-                    coords.x, 
-                    coords.y, 
-                    coords.w as i32, 
-                    coords.h as i32, 
-                    SWP_NOZORDER | SWP_NOACTIVATE
-                );
+        if new_coords != self.coords {
+            self.coords = new_coords;
+
+            if let Some(coords) = self.coords {
+                unsafe {
+                    let _ = SetWindowPos(
+                        self._hwnd, 
+                        None, 
+                        coords.x, 
+                        coords.y, 
+                        coords.w as i32, 
+                        coords.h as i32, 
+                        SWP_NOZORDER | SWP_NOACTIVATE
+                    );
+                }
             }
         }
     }
 
-    pub fn wndproc(
+    pub fn wndproc_on_pressed(
         &self,
         state: &mut T,
         _hwnd: HWND,
@@ -147,20 +151,11 @@ impl<T> Button<T> {
         wparam: WPARAM,
         _lparam: LPARAM,
     ) -> Option<LRESULT> {
-        match msg {
-            WM_COMMAND => {
-                let id = (wparam.0 & 0xffff) as u16;
-
-                println!("ID: {}", id);
-
-                if id == self.id {
-                    (self.on_pressed)(state);
-                    Some(LRESULT(0))
-                } else {
-                    None
-                }
-            }
-            _ => None,
+        if let Some(f) = self.on_pressed {
+            (f)(state);
+            Some(LRESULT(0))
+        } else {
+            None
         }
     }
 }

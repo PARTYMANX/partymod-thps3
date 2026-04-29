@@ -2,14 +2,13 @@ use std::ffi::c_void;
 
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+        Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
         Graphics::Gdi::{BeginPaint, COLOR_WINDOW, EndPaint, FillRect, HBRUSH, PAINTSTRUCT},
         UI::WindowsAndMessaging::{
-            CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, PostQuitMessage, WINDOW_EX_STYLE,
-            WM_DESTROY, WM_PAINT, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+            CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, GetClientRect, GetWindowRect, MoveWindow, PostQuitMessage, WINDOW_EX_STYLE, WM_COMMAND, WM_DESTROY, WM_PAINT, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_OVERLAPPEDWINDOW, WS_SYSMENU, WS_VISIBLE
         },
     },
-    core::{PCWSTR, w},
+    core::{HSTRING, PCWSTR, w},
 };
 
 use crate::{genarena::GenArenaKey, layout::{Layout, Position}, win32::button::Button};
@@ -21,6 +20,10 @@ pub enum Component<T> {
 pub struct Window<T> {
     _hwnd: HWND,
 
+    width: u32,
+    height: u32,
+    title: HSTRING,
+
     // TODO: list of components (or more likely, a generational arena)
     components: Vec<Component<T>>,
     layout: Layout,
@@ -28,17 +31,19 @@ pub struct Window<T> {
 }
 
 impl<T> Window<T> {
-    pub fn new(window_class: PCWSTR, component: crate::component::Component<T>) -> Self {
+    pub fn new(window_class: PCWSTR, component: crate::component::Component<T>, width: u32, height: u32, title: String) -> Self {
+        let title = HSTRING::from(title);
+
         let window = unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
                 window_class,
-                w!("Simple Window"),
-                WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+                &title,
+                WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
-                CW_USEDEFAULT,
-                CW_USEDEFAULT,
+                width as i32,
+                height as i32,
                 None,
                 None,
                 None,
@@ -47,8 +52,23 @@ impl<T> Window<T> {
             .unwrap()
         };
 
+        // resize window to actually desired size
+        unsafe {
+            let mut client_rect = RECT::default();
+            GetClientRect(window, &mut client_rect);
+
+            let mut window_rect = RECT::default();
+            GetWindowRect(window, &mut window_rect);
+
+            let deco_width = (window_rect.right - window_rect.left) - client_rect.right;
+            let deco_height = (window_rect.bottom - window_rect.top) - client_rect.bottom;
+
+            MoveWindow(window, window_rect.left, window_rect.top, width as i32 + deco_width, height as i32 + deco_height, true);
+        }
+        
+
         let mut native_components = Vec::new();
-        let mut layout = Layout::new(640, 480);
+        let mut layout = Layout::new(width, height);
 
         let root_node = layout.get_root_node();
         Self::create_components(
@@ -70,6 +90,10 @@ impl<T> Window<T> {
         Self {
             _hwnd: window,
 
+            width,
+            height,
+            title,
+
             components: native_components,
             layout,
         }
@@ -82,7 +106,7 @@ impl<T> Window<T> {
                     window,
                     (native_components.len() + 1) as u16,
                     button.label.clone(),
-                    button.on_press.unwrap(),
+                    button.on_press,
                     layout_parent, 
                     button.position,
                     layout,
@@ -171,24 +195,26 @@ impl<T> Window<T> {
                     //_ = ValidateRect(Some(window), None);
                     LRESULT(0)
                 }
-                _ => {
-                    let mut result = None;
-                    for c in &self.components {
-                        result = match c {
+                WM_COMMAND => {
+                    let id = (wparam.0 & 0xffff) as u16;
+
+                    if let Some(c) = self.components.get(id as usize - 1) {
+                        let result = match c {
                             Component::Button(button) => {
-                                button.wndproc(state, window, msg, wparam, lparam)
+                                button.wndproc_on_pressed(state, window, msg, wparam, lparam)
                             }
                         };
 
-                        if result.is_some() {
-                            break;
+                        match result {
+                            Some(v) => v,
+                            None => DefWindowProcW(window, msg, wparam, lparam),
                         }
+                    } else {
+                        DefWindowProcW(window, msg, wparam, lparam)
                     }
-
-                    match result {
-                        Some(v) => v,
-                        None => DefWindowProcW(window, msg, wparam, lparam),
-                    }
+                }
+                _ => {
+                    DefWindowProcW(window, msg, wparam, lparam)
                 }
             }
         }

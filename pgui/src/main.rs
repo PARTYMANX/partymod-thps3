@@ -7,6 +7,7 @@ mod container;
 mod genarena;
 mod syncunsafecell;
 mod win32;
+mod window;
 
 fn main() {
     let state = 0;
@@ -25,6 +26,7 @@ fn main() {
                     println!("Pressed {} times!", st);
                 })
                 .into(),
-        ]).spacing(16).into()
+        ]).spacing(16).width(layout::Size::Exact(200)).h_position(layout::HorizontalOffset::AlignRight(0)).into(),
+        window::window("Test Window".to_string()).dimensions(500, 500)
     );
 }
