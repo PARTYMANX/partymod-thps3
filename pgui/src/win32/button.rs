@@ -14,7 +14,7 @@ use windows::{
     core::HSTRING,
 };
 
-use crate::{genarena::GenArenaKey, layout::{Coords, Layout, Position, Size}, win32::app::FONT_CONTEXT};
+use crate::{genarena::GenArenaKey, layout::{Coords, Layout, Position, Size}, win32::{font::Fonts}};
 
 pub struct Button<T> {
     _hwnd: HWND,
@@ -23,21 +23,20 @@ pub struct Button<T> {
     on_pressed: Option<fn(&mut T)>,
     layout_node: GenArenaKey,
     coords: Option<Coords>,
+    current_scale: f32,
 }
 
 impl<T> Button<T> {
-    pub fn new(window: HWND, id: u16, label: String, on_pressed: Option<fn(&mut T)>, layout_parent: GenArenaKey, position: Position, layout: &mut Layout) -> Self {
+    pub fn new(window: HWND, id: u16, label: String, on_pressed: Option<fn(&mut T)>, layout_parent: GenArenaKey, position: Position, layout: &mut Layout, fonts: &Fonts) -> Self {
         let label = HSTRING::from(label);
         //let utf16_label = label.encode_utf16().collect();
 
         //PCWSTR::from(utf16_label);
 
         let (hwnd, layout_node) = unsafe {
-            let font_ctx = (&*FONT_CONTEXT.get()).assume_init_ref();
-
             // get size of label (this could probably be moved elsewhere since i assume it'll get reused)
             let hdc = GetDC(None);
-            let _ = SelectObject(hdc, font_ctx.default_font.into());
+            let _ = SelectObject(hdc, fonts.default_font.into());
             let mut text_size = SIZE::default();
             let _ = GetTextExtentPoint32W(hdc, &label, &mut text_size);
             ReleaseDC(None, hdc);
@@ -49,8 +48,8 @@ impl<T> Button<T> {
             };
 
             let height = match position.h {
-                Size::Fill => text_size.cy as u32 + 16,
-                Size::Min => text_size.cy as u32 + 16,
+                Size::Fill => fonts.default_font_height as u32 + 16,
+                Size::Min => fonts.default_font_height as u32 + 16,
                 Size::Exact(v) => v,
             };
 
@@ -99,7 +98,7 @@ impl<T> Button<T> {
             SendMessageW(
                 hwnd,
                 WM_SETFONT,
-                Some(WPARAM(font_ctx.default_font_scaled.0 as usize)),
+                Some(WPARAM(fonts.default_font_scaled.0 as usize)),
                 Some(LPARAM(1)),
             );
 
@@ -115,30 +114,53 @@ impl<T> Button<T> {
             on_pressed,
             layout_node,
             coords: None,
+            current_scale: 1.0,
         }
     }
 
-    pub fn update(
-        &mut self,
-        layout: &mut Layout,
-    ) {
+    pub fn update(&mut self, layout: &mut Layout, fonts: &Fonts, scale: f32) {
+        let mut update_position = false;
+        let mut update_font = false;
+
         let new_coords = layout.get_node_coords(self.layout_node);
 
         if new_coords != self.coords {
             self.coords = new_coords;
 
+            update_position = true;
+        }
+
+        if scale != self.current_scale {
+            self.current_scale = scale;
+
+            update_position = true;
+            update_font = true;
+        }
+
+        if update_position {
             if let Some(coords) = self.coords {
                 unsafe {
                     let _ = SetWindowPos(
                         self._hwnd, 
                         None, 
-                        coords.x, 
-                        coords.y, 
-                        coords.w as i32, 
-                        coords.h as i32, 
+                        (coords.x as f32 * scale) as i32, 
+                        (coords.y as f32 * scale) as i32, 
+                        (coords.w as f32 * scale) as i32, 
+                        (coords.h as f32 * scale) as i32, 
                         SWP_NOZORDER | SWP_NOACTIVATE
                     );
                 }
+            }
+        }
+
+        if update_font {
+            unsafe {
+                SendMessageW(
+                    self._hwnd,
+                    WM_SETFONT,
+                    Some(WPARAM(fonts.default_font_scaled.0 as usize)),
+                    Some(LPARAM(1)),
+                );
             }
         }
     }

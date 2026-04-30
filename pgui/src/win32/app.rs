@@ -8,11 +8,10 @@ use windows::{
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::{
-            Controls::{ICC_TAB_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx},
-            WindowsAndMessaging::{
+            Controls::{ICC_TAB_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx}, HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext}, WindowsAndMessaging::{
                 CS_HREDRAW, CS_VREDRAW, DefWindowProcW, DispatchMessageW, GetMessageW, IDC_ARROW,
                 LoadCursorW, MSG, RegisterClassW, TranslateMessage, UnregisterClassW, WNDCLASSW,
-            },
+            }
         },
     },
     core::{PCWSTR, w},
@@ -21,69 +20,6 @@ use windows::{
 use crate::{syncunsafecell::SyncUnsafeCell, window::WindowState};
 
 use super::window::Window;
-
-pub static FONT_CONTEXT: SyncUnsafeCell<MaybeUninit<Fonts>> =
-    SyncUnsafeCell::new(MaybeUninit::uninit());
-
-pub struct Fonts {
-    /// Unscaled copy of the default GUI font, for layout calculation purposes.
-    pub default_font: HFONT,
-    /// Scaled copy of the default GUI font, for actual use.
-    pub default_font_scaled: HFONT,
-}
-
-unsafe impl Sync for Fonts {}
-
-impl Fonts {
-    fn new() -> Self {
-        unsafe {
-            let mut lf = LOGFONTW::default();
-            let _ = GetObjectW(
-                GetStockObject(DEFAULT_GUI_FONT),
-                size_of::<LOGFONTW>() as i32,
-                Some(&raw mut lf as *mut c_void),
-            );
-            let default_font = CreateFontW(
-                lf.lfHeight,
-                lf.lfWidth,
-                lf.lfEscapement,
-                lf.lfOrientation,
-                lf.lfWeight,
-                lf.lfItalic as u32,
-                lf.lfUnderline as u32,
-                lf.lfStrikeOut as u32,
-                lf.lfCharSet,
-                lf.lfOutPrecision,
-                lf.lfClipPrecision,
-                lf.lfQuality,
-                lf.lfPitchAndFamily as u32,
-                PCWSTR(lf.lfFaceName.as_ptr()),
-            );
-
-            let default_font_scaled = CreateFontW(
-                lf.lfHeight,
-                lf.lfWidth,
-                lf.lfEscapement,
-                lf.lfOrientation,
-                lf.lfWeight,
-                lf.lfItalic as u32,
-                lf.lfUnderline as u32,
-                lf.lfStrikeOut as u32,
-                lf.lfCharSet,
-                lf.lfOutPrecision,
-                lf.lfClipPrecision,
-                lf.lfQuality,
-                lf.lfPitchAndFamily as u32,
-                PCWSTR(lf.lfFaceName.as_ptr()),
-            );
-
-            Self {
-                default_font,
-                default_font_scaled,
-            }
-        }
-    }
-}
 
 pub static APP_CONTEXT: SyncUnsafeCell<Option<AppContext>> = SyncUnsafeCell::new(None);
 
@@ -104,12 +40,6 @@ pub fn run<T: 'static>(mut state: T, component: crate::component::Component<T>, 
             ..Default::default()
         };
         let _ = InitCommonControlsEx(&icex);
-
-        let fonts = Fonts::new();
-
-        let ctx = &mut *FONT_CONTEXT.get();
-
-        ctx.write(fonts);
     }
 
     // TODO: get default font
@@ -118,6 +48,8 @@ pub fn run<T: 'static>(mut state: T, component: crate::component::Component<T>, 
     //ShellMessageBoxW(None, None, w!("Wide"), w!("World"), MB_ICONERROR);
 
     unsafe {
+        SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
         let instance = GetModuleHandleW(None).unwrap();
         let window_class = w!("pgui_window");
 
@@ -133,7 +65,7 @@ pub fn run<T: 'static>(mut state: T, component: crate::component::Component<T>, 
 
         let _atom = RegisterClassW(&wc);
 
-        let window = Window::new(window_class, component, window.width, window.height, window.title);
+        let mut window = Window::new(window_class, component, window.width, window.height, window.title);
 
         let ctx = &mut *APP_CONTEXT.get();
         *ctx = Some(AppContext {
