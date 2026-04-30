@@ -26,7 +26,7 @@ fn main() {
                     println!("Pressed {} times!", st);
                 })
                 .into(),
-        ]).spacing(16).width(layout::Size::Exact(200)).h_position(layout::HorizontalOffset::AlignRight(0)).into(),
+        ]).spacing(16).h_position(layout::HorizontalOffset::Center).v_position(layout::VerticalOffset::Center).into(),
         window::window("Test Window".to_string()).dimensions(500, 500)
     );
 }

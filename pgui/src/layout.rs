@@ -100,162 +100,246 @@ impl Layout {
             y: 0,
         };
 
-        self.calculate_node_coords(root_node_key, bounds);
+        // calculate relative coords for each node
+        self.calculate_relative_node_coords(root_node_key, bounds, true);
+
+        // finally, calculate final coords for each node
+        self.calculate_node_positions(root_node_key, bounds);
     }
 
-    fn calculate_node_coords(&mut self, node_key: GenArenaKey, bounds: Coords) -> Coords {
+    // calculates the size and relative positioning of a node given its parent's bounds. returns its own bounds
+    fn calculate_relative_node_coords(&mut self, node_key: GenArenaKey, parent_bounds: Coords, greedy: bool) -> Coords {
         let node = self.nodes.get(node_key).unwrap();
 
-        // calculate our base bounds for this branch (this is our maximum allowed size)
-        let mut coords = bounds;
-
-        coords.x += node.position.h_padding as i32;
-        coords.w -= node.position.h_padding * 2;
-
-        coords.y += node.position.v_padding as i32;
-        coords.h -= node.position.v_padding * 2;
-
-        // TODO: calculate coords here!!!
-        let is_exact_width = match node.position.w {
-            Size::Fill => {
-                true
+        // amount to subtract from bounds
+        let offset_x = match node.position.x {
+            HorizontalOffset::AlignLeft(v) => v,
+            HorizontalOffset::Center => 0,
+            HorizontalOffset::AlignRight(v) => v,
+        };
+        // size of bounds
+        let (width, is_exact_width) = match node.position.w {
+            Size::Fill => if greedy {
+                (parent_bounds.w - offset_x, true)
+            } else {
+                (0, false)
             },
-            Size::Min => {
-                false
-            },
-            Size::Exact(size) => {
-                coords.w = size;
-
-                true
-            },
+            Size::Min => (0, false),
+            Size::Exact(v) => (v, true),
         };
 
-        let is_exact_height = match node.position.h {
-            Size::Fill => {
-                true
+        // amount to subtract from bounds
+        let offset_y = match node.position.y {
+            VerticalOffset::AlignTop(v) => v,
+            VerticalOffset::Center => 0,
+            VerticalOffset::AlignBottom(v) => v,
+        };
+        // size of bounds
+        let (height, is_exact_height) = match node.position.h {
+            Size::Fill => if greedy {
+                (parent_bounds.h - offset_y, true)
+            } else {
+                (0, false)
             },
-            Size::Min => {
-                false
-            },
-            Size::Exact(size) => {
-                coords.h = size;
-
-                true
-            },
+            Size::Min => (0, false),
+            Size::Exact(v) => (v, true),
         };
 
-        match node.position.x {
-            HorizontalOffset::AlignLeft(position) => {
-                coords.x += position as i32;
-            },
-            HorizontalOffset::Center => {
-                coords.x += ((bounds.w / 2) - (coords.w / 2)) as i32;
-            },
-            HorizontalOffset::AlignRight(position) => {
-                coords.x += (bounds.w - (coords.w + position)) as i32;
-            },
-        }
+        let mut coords = Coords {
+            w: width,
+            h: height,
+            x: parent_bounds.x + node.position.h_padding as i32,
+            y: parent_bounds.y + node.position.v_padding as i32,
+        };
 
-        match node.position.y {
-            VerticalOffset::AlignTop(position) => {
-                coords.y += position as i32;
+        // space available to this node
+        let mut available_bounds = Coords {
+            w: if is_exact_width {
+                coords.w
+            } else {
+                (parent_bounds.w - offset_x) - (node.position.h_padding * 2)
             },
-            VerticalOffset::Center => {
-                coords.y += ((bounds.h / 2) - (coords.h / 2)) as i32;
+            h: if is_exact_height {
+                coords.h
+            } else {
+                (parent_bounds.h - offset_y) - (node.position.v_padding * 2)
             },
-            VerticalOffset::AlignBottom(position) => {
-                coords.y += (bounds.h - (coords.h + position)) as i32;
-            },
-        }
+            x: 0,
+            y: 0,
+        };
 
-        // TODO: only minimize size if not Size::Exact!
+        // space taken by this node
+        let mut self_bounds = Coords {
+            w: offset_x + (node.position.h_padding * 2),
+            h: offset_y + (node.position.v_padding * 2),
+            x: 0,
+            y: 0,
+        };
+
         match &node.relatives {
             LayoutNodeRelatives::Root { child } => {
                 if let Some(child_key) = child {
                     // ignore child coords, we don't need minimum size
-                    self.calculate_node_coords(*child_key, coords);
+                    self.calculate_relative_node_coords(*child_key, available_bounds, true);
                 }
             },
             LayoutNodeRelatives::Leaf { parent: _ } => {},
             LayoutNodeRelatives::Container { parent: _, child } => {
                 if let Some(child_key) = child {
-                    let child_coords = self.calculate_node_coords(*child_key, coords);
+                    let child_coords = self.calculate_relative_node_coords(*child_key, available_bounds, true);
 
                     if !is_exact_width {
-                        coords.w = ((child_coords.x - coords.x) + child_coords.w as i32) as u32;
+                        coords.w += child_coords.w;
                     }
-
                     if !is_exact_height {
-                        coords.h = ((child_coords.y - coords.y) + child_coords.h as i32) as u32;
+                        coords.h += child_coords.h;
                     }
                 }
             },
             LayoutNodeRelatives::HorizontalGroup { parent: _, children, spacing } => {
-                let mut bounds = coords;
+                let mut children_width = 0;
                 let mut max_h = 0;
+                let mut remaining_bounds = available_bounds;
                 let space = *spacing;
 
                 // borrow checker gets mad if we use children directly
                 // ...so clone it. really bad stuff
-                for child_key in &children.clone() {
-                    let child_coords = self.calculate_node_coords(*child_key, bounds);
+                let children_list = children.clone();
 
-                    let shift_x = (child_coords.x - coords.x) + (child_coords.w + space) as i32;
-                    bounds.x += shift_x;
-                    bounds.w = bounds.w.saturating_sub(shift_x as u32);
+                for (i, child_key) in children_list.iter().enumerate() {
+                    let is_last = i == children_list.len() - 1;
 
-                    let height = (child_coords.y - coords.y) + child_coords.h as i32;
+                    let child_bounds = self.calculate_relative_node_coords(*child_key, remaining_bounds, is_last);
 
-                    max_h = max_h.max(height as u32);
+                    if !is_last {
+                        children_width += child_bounds.w + space;
+                    } else {
+                        children_width += child_bounds.w;
+                    }
+
+                    remaining_bounds.w = available_bounds.w - children_width;
+                    remaining_bounds.x = children_width as i32;
+
+                    max_h = max_h.max(child_bounds.h as u32);
                 }
 
-                // now that we know the size of our children, adjust coords
                 if !is_exact_width {
-                    coords.w = bounds.x as u32;
+                    coords.w += children_width;
                 }
-
                 if !is_exact_height {
-                    coords.h = max_h;
+                    coords.h += max_h;
                 }
             },
             LayoutNodeRelatives::VerticalGroup { parent: _, children, spacing } => {
-                let mut bounds = coords;
+                let mut children_height = 0;
                 let mut max_w = 0;
+                let mut remaining_bounds = available_bounds;
                 let space = *spacing;
 
                 // borrow checker gets mad if we use children directly
                 // ...so clone it. really bad stuff
-                for child_key in &children.clone() {
-                    let child_coords = self.calculate_node_coords(*child_key, bounds);
+                let children_list = children.clone();
 
-                    let shift_y = (child_coords.y - coords.y) + (child_coords.h + space) as i32;
-                    bounds.y += shift_y;
-                    bounds.h = bounds.h.saturating_sub(shift_y as u32);
+                for (i, child_key) in children_list.iter().enumerate() {
+                    let is_last = i == children_list.len() - 1;
 
-                    let width = (child_coords.x - coords.x) + child_coords.w as i32;
+                    let child_bounds = self.calculate_relative_node_coords(*child_key, remaining_bounds, is_last);
 
-                    max_w = max_w.max(width as u32);
-                }
+                    if !is_last {
+                        children_height += child_bounds.h + space;
+                    } else {
+                        children_height += child_bounds.h;
+                    }
 
-                // now that we know the size of our children, adjust coords
-                if !is_exact_height {
-                    coords.h = bounds.y as u32;
+                    remaining_bounds.h = available_bounds.h - children_height;
+                    remaining_bounds.y = children_height as i32;
+
+                    max_w = max_w.max(child_bounds.w as u32);
                 }
 
                 if !is_exact_width {
-                    coords.w = max_w;
+                    coords.w += max_w;
+                }
+                if !is_exact_height {
+                    coords.h += children_height;
                 }
             },
         }
 
-        // get a mutable ref to this node to actually set its coords
-        // we couldn't hold it before because we needed to calculate children
         let node_mut = self.nodes.get_mut(node_key).unwrap();
+
+        // now that we know this node's size, we can align it
+        match node_mut.position.x {
+            HorizontalOffset::AlignLeft(v) => coords.x += v as i32,
+            HorizontalOffset::Center => if greedy {
+                let node_width = coords.w + (node_mut.position.h_padding * 2);
+                coords.x += ((parent_bounds.w - node_width) / 2) as i32;
+            },
+            HorizontalOffset::AlignRight(v) => if greedy {
+                let node_width = coords.w + (node_mut.position.h_padding * 2);
+                coords.x += ((parent_bounds.w - node_width) - v) as i32;
+            },
+        }
+
+        match node_mut.position.y {
+            VerticalOffset::AlignTop(v) => coords.y += v as i32,
+            VerticalOffset::Center => if greedy {
+                let node_height = coords.h + (node_mut.position.v_padding * 2);
+                coords.y += ((parent_bounds.h - node_height) / 2) as i32;
+            },
+            VerticalOffset::AlignBottom(v) => if greedy {
+                let node_height = coords.h + (node_mut.position.v_padding * 2);
+                coords.y += ((parent_bounds.h - node_height) - v) as i32;
+            },
+        }
+
         node_mut.coords = Some(coords);
 
-        println!("Coords: {}, {}, {}, {}", coords.x, coords.y, coords.w, coords.h);
+        self_bounds.w += coords.w;
+        self_bounds.h += coords.h;
 
-        coords
+        self_bounds
+    }
+
+    fn calculate_node_positions(&mut self, node_key: GenArenaKey, parent_coords: Coords) {
+        let node = self.nodes.get(node_key).unwrap();
+
+        let mut coords = node.coords.unwrap();
+
+        coords.x += parent_coords.x;
+        coords.y += parent_coords.y;
+
+        match &node.relatives {
+            LayoutNodeRelatives::Root { child } => {
+                if let Some(child_key) = child {
+                    // ignore child coords, we don't need minimum size
+                    self.calculate_node_positions(*child_key, coords);
+                }
+            },
+            LayoutNodeRelatives::Leaf { parent: _ } => {},
+            LayoutNodeRelatives::Container { parent: _, child } => {
+                if let Some(child_key) = child {
+                    self.calculate_node_positions(*child_key, coords);
+                }
+            },
+            LayoutNodeRelatives::HorizontalGroup { parent: _, children, spacing } => {
+                // borrow checker gets mad if we use children directly
+                // ...so clone it. really bad stuff
+                for child_key in &children.clone() {
+                    self.calculate_node_positions(*child_key, coords);
+                }
+            },
+            LayoutNodeRelatives::VerticalGroup { parent: _, children, spacing } => {
+                // borrow checker gets mad if we use children directly
+                // ...so clone it. really bad stuff
+                for child_key in &children.clone() {
+                    self.calculate_node_positions(*child_key, coords);
+                }
+            },
+        }
+
+        let node_mut = self.nodes.get_mut(node_key).unwrap();
+        node_mut.coords = Some(coords);
     }
 }
 
