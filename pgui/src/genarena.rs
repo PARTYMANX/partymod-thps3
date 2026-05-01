@@ -1,8 +1,4 @@
-// TODO: use the following to get a free list going
-enum ArenaEntry<T> {
-    Occupied(T),
-    Free(usize),
-}
+#![allow(dead_code)]
 
 pub struct GenArena<T> {
     // TODO: add count
