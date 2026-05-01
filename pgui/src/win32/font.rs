@@ -1,6 +1,6 @@
-use std::{ffi::c_void, mem::MaybeUninit};
+use std::ffi::c_void;
 
-use windows::{Win32::{Graphics::Gdi::{CreateFontW, DEFAULT_GUI_FONT, GetObjectW, GetStockObject, HFONT, LOGFONTW}, UI::{HiDpi::SystemParametersInfoForDpi, WindowsAndMessaging::{NONCLIENTMETRICSW, SPI_GETNONCLIENTMETRICS}}}, core::PCWSTR};
+use windows::{Win32::{Graphics::Gdi::{CreateFontW, HFONT}, UI::{HiDpi::SystemParametersInfoForDpi, WindowsAndMessaging::{NONCLIENTMETRICSW, SPI_GETNONCLIENTMETRICS}}}, core::PCWSTR};
 
 pub struct Fonts {
     /// Unscaled copy of the default GUI font, for layout calculation purposes.

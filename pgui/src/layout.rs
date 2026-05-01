@@ -44,10 +44,10 @@ impl Layout {
 
     pub fn add_node(&mut self, parent: GenArenaKey, ty: LayoutNodeType, position: Position) -> GenArenaKey {
         let relatives = match ty {
-            LayoutNodeType::Leaf => LayoutNodeRelatives::Leaf { parent },
-            LayoutNodeType::Container => LayoutNodeRelatives::Container { parent, child: None },
-            LayoutNodeType::HorizontalGroup { spacing } => LayoutNodeRelatives::HorizontalGroup { parent, children: Vec::new(), spacing },
-            LayoutNodeType::VerticalGroup { spacing } => LayoutNodeRelatives::VerticalGroup { parent, children: Vec::new(), spacing },
+            LayoutNodeType::Leaf => LayoutNodeRelatives::Leaf { _parent: parent },
+            LayoutNodeType::Container => LayoutNodeRelatives::Container { _parent: parent, child: None },
+            LayoutNodeType::HorizontalGroup { spacing } => LayoutNodeRelatives::HorizontalGroup { _parent: parent, children: Vec::new(), spacing },
+            LayoutNodeType::VerticalGroup { spacing } => LayoutNodeRelatives::VerticalGroup { _parent: parent, children: Vec::new(), spacing },
         };
 
         let node = LayoutNode {
@@ -61,17 +61,17 @@ impl Layout {
         let parent_node = self.nodes.get_mut(parent).unwrap();
         
         match &mut parent_node.relatives {
-            LayoutNodeRelatives::Leaf { parent: _ } => panic!(),
+            LayoutNodeRelatives::Leaf { _parent: _ } => panic!(),
             LayoutNodeRelatives::Root { child } => {
                 *child = Some(node_key);
             },
-            LayoutNodeRelatives::Container { parent: _, child } => {
+            LayoutNodeRelatives::Container { _parent: _, child } => {
                 *child = Some(node_key);
             },
-            LayoutNodeRelatives::HorizontalGroup { parent: _, children, spacing: _ } => {
+            LayoutNodeRelatives::HorizontalGroup { _parent: _, children, spacing: _ } => {
                 children.push(node_key);
             },
-            LayoutNodeRelatives::VerticalGroup { parent: _, children, spacing: _ } => {
+            LayoutNodeRelatives::VerticalGroup { _parent: _, children, spacing: _ } => {
                 children.push(node_key);
             },
         }
@@ -153,7 +153,7 @@ impl Layout {
         };
 
         // space available to this node
-        let mut available_bounds = Coords {
+        let available_bounds = Coords {
             w: if is_exact_width {
                 coords.w
             } else {
@@ -183,8 +183,8 @@ impl Layout {
                     self.calculate_relative_node_coords(*child_key, available_bounds, true);
                 }
             },
-            LayoutNodeRelatives::Leaf { parent: _ } => {},
-            LayoutNodeRelatives::Container { parent: _, child } => {
+            LayoutNodeRelatives::Leaf { _parent: _ } => {},
+            LayoutNodeRelatives::Container { _parent: _, child } => {
                 if let Some(child_key) = child {
                     let child_coords = self.calculate_relative_node_coords(*child_key, available_bounds, true);
 
@@ -196,7 +196,7 @@ impl Layout {
                     }
                 }
             },
-            LayoutNodeRelatives::HorizontalGroup { parent: _, children, spacing } => {
+            LayoutNodeRelatives::HorizontalGroup { _parent: _, children, spacing } => {
                 let mut children_width = 0;
                 let mut max_h = 0;
                 let mut remaining_bounds = available_bounds;
@@ -230,7 +230,7 @@ impl Layout {
                     coords.h += max_h;
                 }
             },
-            LayoutNodeRelatives::VerticalGroup { parent: _, children, spacing } => {
+            LayoutNodeRelatives::VerticalGroup { _parent: _, children, spacing } => {
                 let mut children_height = 0;
                 let mut max_w = 0;
                 let mut remaining_bounds = available_bounds;
@@ -316,20 +316,20 @@ impl Layout {
                     self.calculate_node_positions(*child_key, coords);
                 }
             },
-            LayoutNodeRelatives::Leaf { parent: _ } => {},
-            LayoutNodeRelatives::Container { parent: _, child } => {
+            LayoutNodeRelatives::Leaf { _parent: _ } => {},
+            LayoutNodeRelatives::Container { _parent: _, child } => {
                 if let Some(child_key) = child {
                     self.calculate_node_positions(*child_key, coords);
                 }
             },
-            LayoutNodeRelatives::HorizontalGroup { parent: _, children, spacing } => {
+            LayoutNodeRelatives::HorizontalGroup { _parent: _, children, spacing: _ } => {
                 // borrow checker gets mad if we use children directly
                 // ...so clone it. really bad stuff
                 for child_key in &children.clone() {
                     self.calculate_node_positions(*child_key, coords);
                 }
             },
-            LayoutNodeRelatives::VerticalGroup { parent: _, children, spacing } => {
+            LayoutNodeRelatives::VerticalGroup { _parent: _, children, spacing: _ } => {
                 // borrow checker gets mad if we use children directly
                 // ...so clone it. really bad stuff
                 for child_key in &children.clone() {
@@ -340,6 +340,12 @@ impl Layout {
 
         let node_mut = self.nodes.get_mut(node_key).unwrap();
         node_mut.coords = Some(coords);
+    }
+
+    pub fn set_node_position(&mut self, node_key: GenArenaKey, position: Position) {
+        if let Some(node) = self.nodes.get_mut(node_key) {
+            node.position = position;
+        }
     }
 }
 
@@ -361,25 +367,25 @@ enum LayoutNodeRelatives {
         child: Option<GenArenaKey>,
     },
     Leaf {
-        parent: GenArenaKey,
+        _parent: GenArenaKey,
     },
     Container {
-        parent: GenArenaKey,
+        _parent: GenArenaKey,
         child: Option<GenArenaKey>,
     },
     HorizontalGroup {
-        parent: GenArenaKey,
+        _parent: GenArenaKey,
         children: Vec<GenArenaKey>,
         spacing: u32,
     },
     VerticalGroup {
-        parent: GenArenaKey,
+        _parent: GenArenaKey,
         children: Vec<GenArenaKey>,
         spacing: u32,
     },
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Position {
     pub w: Size,
     pub h: Size,
@@ -413,21 +419,21 @@ pub struct Coords {
     pub y: i32,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum HorizontalOffset {
     AlignLeft(u32),
     Center,
     AlignRight(u32),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum VerticalOffset {
     AlignTop(u32),
     Center,
     AlignBottom(u32),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Size {
     Fill,
     Min,

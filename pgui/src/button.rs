@@ -2,13 +2,37 @@ use crate::layout::{HorizontalOffset, Position, Size, VerticalOffset};
 
 pub struct Button<T> {
     pub(crate) label: String,
+    pub(crate) enabled: bool,
     pub(crate) on_press: Option<fn(&mut T)>,
+    pub(crate) state_hook: Option<fn(&T, &mut ButtonState)>,
     pub(crate) position: Position,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct ButtonState {
+    pub label: String,
+    pub enabled: bool,
+    pub position: Position,
 }
 
 impl<T> Button<T> {
     pub fn on_press(mut self, func: fn(&mut T)) -> Self {
         self.on_press = Some(func);
+
+        if !self.enabled {
+            self.enabled = true;
+        }
+
+        self
+    }
+
+    pub fn state_hook(mut self, func: fn(&T, &mut ButtonState)) -> Self {
+        self.state_hook = Some(func);
+        self
+    }
+
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = enabled;
         self
     }
 
@@ -58,7 +82,9 @@ impl<T> Button<T> {
 pub fn button<T>(label: String) -> Button<T> {
     Button {
         label,
+        enabled: false,
         on_press: None,
+        state_hook: None,
         position: Position::default(),
     }
 }

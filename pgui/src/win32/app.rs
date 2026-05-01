@@ -1,11 +1,6 @@
-use std::{ffi::c_void, mem::MaybeUninit};
-
 use windows::{
     Win32::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
-        Graphics::Gdi::{
-            CreateFontW, DEFAULT_GUI_FONT, GetObjectW, GetStockObject, HFONT, LOGFONTW,
-        },
         System::LibraryLoader::GetModuleHandleW,
         UI::{
             Controls::{ICC_TAB_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx}, HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext}, WindowsAndMessaging::{
@@ -14,7 +9,7 @@ use windows::{
             }
         },
     },
-    core::{PCWSTR, w},
+    core::w,
 };
 
 use crate::{syncunsafecell::SyncUnsafeCell, window::WindowState};
@@ -66,6 +61,8 @@ pub fn run<T: 'static>(mut state: T, component: crate::component::Component<T>, 
         let _atom = RegisterClassW(&wc);
 
         let mut window = Window::new(window_class, component, window.width, window.height, window.title);
+
+        window.run_state_hooks(&state);  // run state hooks to populate components
 
         let ctx = &mut *APP_CONTEXT.get();
         *ctx = Some(AppContext {

@@ -17,13 +17,16 @@ fn main() {
             button::button("👍".to_string())
                 .on_press(|st| {
                     *st += 1;
-                    println!("Pressed {} times!", st);
+                })
+                .into(),
+            button::button("".to_string())
+                .state_hook(|st, b| {
+                    b.label = format!("{}", st);
                 })
                 .into(),
             button::button("👎".to_string())
                 .on_press(|st| {
                     *st -= 1;
-                    println!("Pressed {} times!", st);
                 })
                 .into(),
         ]).spacing(16).h_position(layout::HorizontalOffset::Center).v_position(layout::VerticalOffset::Center).into(),

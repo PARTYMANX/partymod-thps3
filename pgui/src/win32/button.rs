@@ -5,51 +5,48 @@ use windows::{
         Foundation::{HWND, LPARAM, LRESULT, SIZE, WPARAM},
         Graphics::Gdi::{GetDC, GetTextExtentPoint32W, ReleaseDC, SelectObject},
         UI::{
-            Controls::WC_BUTTONW,
-            WindowsAndMessaging::{
-                BS_PUSHBUTTON, CreateWindowExW, HMENU, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE
-            },
+            Controls::WC_BUTTONW, Input::KeyboardAndMouse::EnableWindow, WindowsAndMessaging::{
+                BS_PUSHBUTTON, CreateWindowExW, HMENU, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, SetWindowTextW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE
+            }
         },
     },
     core::HSTRING,
 };
 
-use crate::{genarena::GenArenaKey, layout::{Coords, Layout, Position, Size}, win32::{font::Fonts}};
+use crate::{button::ButtonState, genarena::GenArenaKey, layout::{Coords, Layout, Position, Size}, win32::font::Fonts};
 
 pub struct Button<T> {
-    _hwnd: HWND,
-    id: u16,
-    _label: HSTRING,
+    hwnd: HWND,
+    _id: u16,
+    label: HSTRING,
+    current_state: ButtonState,
     on_pressed: Option<fn(&mut T)>,
+    state_hook: Option<fn(&T, &mut ButtonState)>,
     layout_node: GenArenaKey,
     coords: Option<Coords>,
     current_scale: f32,
 }
 
 impl<T> Button<T> {
-    pub fn new(window: HWND, id: u16, label: String, on_pressed: Option<fn(&mut T)>, layout_parent: GenArenaKey, position: Position, layout: &mut Layout, fonts: &Fonts) -> Self {
-        let label = HSTRING::from(label);
+    pub fn new(window: HWND, id: u16, initial_state: ButtonState, on_pressed: Option<fn(&mut T)>, state_hook: Option<fn(&T, &mut ButtonState)>, layout_parent: GenArenaKey, layout: &mut Layout, fonts: &Fonts) -> Self {
+        let label = HSTRING::from(initial_state.label.clone());
         //let utf16_label = label.encode_utf16().collect();
 
         //PCWSTR::from(utf16_label);
 
         let (hwnd, layout_node) = unsafe {
             // get size of label (this could probably be moved elsewhere since i assume it'll get reused)
-            let hdc = GetDC(None);
-            let _ = SelectObject(hdc, fonts.default_font.into());
-            let mut text_size = SIZE::default();
-            let _ = GetTextExtentPoint32W(hdc, &label, &mut text_size);
-            ReleaseDC(None, hdc);
+            let position = Self::calc_position(initial_state.position, &label, fonts);
 
             let width = match position.w {
-                Size::Fill => text_size.cx as u32 + 32,
-                Size::Min => text_size.cx as u32 + 32,
+                Size::Fill => 0,
+                Size::Min => 0,
                 Size::Exact(v) => v,
             };
 
             let height = match position.h {
-                Size::Fill => fonts.default_font_height as u32 + 16,
-                Size::Min => fonts.default_font_height as u32 + 16,
+                Size::Fill => 0,
+                Size::Min => 0,
                 Size::Exact(v) => v,
             };
 
@@ -75,23 +72,7 @@ impl<T> Button<T> {
             let layout_node = layout.add_node(
                 layout_parent,
                 crate::layout::LayoutNodeType::Leaf,
-                Position { 
-                    w: match position.w {
-                        Size::Fill => Size::Fill,
-                        Size::Exact(v) => Size::Exact(v),
-                        Size::Min => Size::Exact(width),
-                    },
-                    h: match position.h {
-                        Size::Fill => Size::Fill,
-                        Size::Exact(v) => Size::Exact(v),
-                        Size::Min => Size::Exact(height),
-                    },
-                    x: position.x,
-                    y: position.y,
-                    h_padding: position.h_padding,
-                    v_padding: position.v_padding,
-                }
-
+                position,
             );
 
             // set the font to the correct one
@@ -102,19 +83,63 @@ impl<T> Button<T> {
                 Some(LPARAM(1)),
             );
 
-            //let _ = ShowWindow(hwnd, SW_NORMAL);
+            let _ = EnableWindow(hwnd, initial_state.enabled);
 
             (hwnd, layout_node)
         };
 
         Self {
-            _hwnd: hwnd,
-            id,
-            _label: label,
+            hwnd,
+            _id: id,
+            label,
+            current_state: initial_state,
             on_pressed,
+            state_hook,
             layout_node,
             coords: None,
             current_scale: 1.0,
+        }
+    }
+
+    fn calc_position(initial_position: Position, label: &HSTRING, fonts: &Fonts) -> Position {
+        // get size of label (this could probably be moved elsewhere since i assume it'll get reused)
+        let text_size = unsafe {
+            let hdc = GetDC(None);
+            let _ = SelectObject(hdc, fonts.default_font.into());
+            let mut text_size = SIZE::default();
+            let _ = GetTextExtentPoint32W(hdc, &label, &mut text_size);
+            ReleaseDC(None, hdc);
+
+            text_size
+        };
+
+        let width = match initial_position.w {
+            Size::Fill => text_size.cx as u32 + 32,
+            Size::Min => text_size.cx as u32 + 32,
+            Size::Exact(v) => v,
+        };
+
+        let height = match initial_position.h {
+            Size::Fill => fonts.default_font_height as u32 + 16,
+            Size::Min => fonts.default_font_height as u32 + 16,
+            Size::Exact(v) => v,
+        };
+
+        Position { 
+            w: match initial_position.w {
+                Size::Fill => Size::Fill,
+                Size::Exact(v) => Size::Exact(v),
+                Size::Min => Size::Exact(width),
+            },
+            h: match initial_position.h {
+                Size::Fill => Size::Fill,
+                Size::Exact(v) => Size::Exact(v),
+                Size::Min => Size::Exact(height),
+            },
+            x: initial_position.x,
+            y: initial_position.y,
+            h_padding: initial_position.h_padding,
+            v_padding: initial_position.v_padding,
         }
     }
 
@@ -141,7 +166,7 @@ impl<T> Button<T> {
             if let Some(coords) = self.coords {
                 unsafe {
                     let _ = SetWindowPos(
-                        self._hwnd, 
+                        self.hwnd, 
                         None, 
                         (coords.x as f32 * scale) as i32, 
                         (coords.y as f32 * scale) as i32, 
@@ -156,7 +181,7 @@ impl<T> Button<T> {
         if update_font {
             unsafe {
                 SendMessageW(
-                    self._hwnd,
+                    self.hwnd,
                     WM_SETFONT,
                     Some(WPARAM(fonts.default_font_scaled.0 as usize)),
                     Some(LPARAM(1)),
@@ -169,8 +194,8 @@ impl<T> Button<T> {
         &self,
         state: &mut T,
         _hwnd: HWND,
-        msg: u32,
-        wparam: WPARAM,
+        _msg: u32,
+        _wparam: WPARAM,
         _lparam: LPARAM,
     ) -> Option<LRESULT> {
         if let Some(f) = self.on_pressed {
@@ -178,6 +203,34 @@ impl<T> Button<T> {
             Some(LRESULT(0))
         } else {
             None
+        }
+    }
+
+    pub fn do_state_hook(&mut self, state: &T, layout: &mut Layout, fonts: &Fonts) -> bool {
+        if let Some(f) = self.state_hook {
+            let mut new_state = self.current_state.clone();
+            (f)(state, &mut new_state);
+
+            if new_state != self.current_state {
+                self.current_state = new_state;
+
+                unsafe {
+                    let _ = EnableWindow(self.hwnd, self.current_state.enabled);
+
+                    self.label = HSTRING::from(self.current_state.label.clone());
+                    let _ = SetWindowTextW(self.hwnd, &self.label);
+                }
+
+                let position = Self::calc_position(self.current_state.position, &self.label, fonts);
+                layout.set_node_position(self.layout_node, position);
+                self.coords = None;
+
+                true
+            } else {
+                false
+            }
+        } else {
+            false
         }
     }
 }
