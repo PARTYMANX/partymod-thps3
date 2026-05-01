@@ -3,15 +3,28 @@ use std::ffi::c_void;
 use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
-        Graphics::Gdi::{BeginPaint, COLOR_WINDOW, EndPaint, FillRect, HBRUSH, InvalidateRect, PAINTSTRUCT},
-        UI::{HiDpi::GetDpiForWindow, WindowsAndMessaging::{
-            CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, GetClientRect, GetWindowRect, MoveWindow, PostQuitMessage, WINDOW_EX_STYLE, WM_COMMAND, WM_DESTROY, WM_DPICHANGED, WM_PAINT, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE
-        }},
+        Graphics::Gdi::{
+            BeginPaint, COLOR_WINDOW, EndPaint, FillRect, HBRUSH, InvalidateRect, PAINTSTRUCT,
+        },
+        UI::{
+            HiDpi::GetDpiForWindow,
+            WindowsAndMessaging::{
+                CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, GetClientRect, GetWindowRect,
+                MoveWindow, PostQuitMessage, WINDOW_EX_STYLE, WM_COMMAND, WM_DESTROY,
+                WM_DPICHANGED, WM_PAINT, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU,
+                WS_VISIBLE,
+            },
+        },
     },
     core::{HSTRING, PCWSTR},
 };
 
-use crate::{button::ButtonState, genarena::GenArenaKey, layout::Layout, win32::{button::Button, font::Fonts}};
+use crate::{
+    button::ButtonState,
+    genarena::GenArenaKey,
+    layout::Layout,
+    win32::{button::Button, font::Fonts},
+};
 
 pub enum Component<T> {
     Button(Button<T>),
@@ -32,7 +45,13 @@ pub struct Window<T> {
 }
 
 impl<T> Window<T> {
-    pub fn new(window_class: PCWSTR, component: crate::component::Component<T>, width: u32, height: u32, title: String) -> Self {
+    pub fn new(
+        window_class: PCWSTR,
+        component: crate::component::Component<T>,
+        width: u32,
+        height: u32,
+        title: String,
+    ) -> Self {
         let title = HSTRING::from(title);
 
         let window = unsafe {
@@ -68,7 +87,14 @@ impl<T> Window<T> {
             let deco_width = (window_rect.right - window_rect.left) - client_rect.right;
             let deco_height = (window_rect.bottom - window_rect.top) - client_rect.bottom;
 
-            let _ = MoveWindow(window, window_rect.left, window_rect.top, width as i32 + deco_width, height as i32 + deco_height, true);
+            let _ = MoveWindow(
+                window,
+                window_rect.left,
+                window_rect.top,
+                width as i32 + deco_width,
+                height as i32 + deco_height,
+                true,
+            );
         }
 
         let mut native_components = Vec::new();
@@ -102,7 +128,7 @@ impl<T> Window<T> {
 
             components: native_components,
             layout,
-            
+
             fonts,
         };
 
@@ -111,7 +137,14 @@ impl<T> Window<T> {
         result
     }
 
-    fn create_components(window: HWND, component: crate::component::Component<T>, native_components: &mut Vec<Component<T>>, layout: &mut Layout, layout_parent: GenArenaKey, fonts: &Fonts) {
+    fn create_components(
+        window: HWND,
+        component: crate::component::Component<T>,
+        native_components: &mut Vec<Component<T>>,
+        layout: &mut Layout,
+        layout_parent: GenArenaKey,
+        fonts: &Fonts,
+    ) {
         match component {
             crate::component::Component::Button(button) => {
                 let initial_state = ButtonState {
@@ -126,13 +159,13 @@ impl<T> Window<T> {
                     initial_state,
                     button.on_press,
                     button.state_hook,
-                    layout_parent, 
+                    layout_parent,
                     layout,
                     fonts,
                 ));
 
                 native_components.push(button);
-            },
+            }
             crate::component::Component::Container(container) => {
                 let node = layout.add_node(
                     layout_parent,
@@ -146,9 +179,9 @@ impl<T> Window<T> {
                     native_components,
                     layout,
                     node,
-                    fonts
+                    fonts,
                 );
-            },
+            }
             crate::component::Component::Horizontal(horizontal) => {
                 let node = layout.add_node(
                     layout_parent,
@@ -159,16 +192,9 @@ impl<T> Window<T> {
                 );
 
                 for child in horizontal.children {
-                    Self::create_components(
-                        window,
-                        child,
-                        native_components,
-                        layout,
-                        node,
-                        fonts
-                    );
+                    Self::create_components(window, child, native_components, layout, node, fonts);
                 }
-            },
+            }
             crate::component::Component::Vertical(vertical) => {
                 let node = layout.add_node(
                     layout_parent,
@@ -179,16 +205,9 @@ impl<T> Window<T> {
                 );
 
                 for child in vertical.children {
-                    Self::create_components(
-                        window,
-                        child,
-                        native_components,
-                        layout,
-                        node,
-                        fonts
-                    );
+                    Self::create_components(window, child, native_components, layout, node, fonts);
                 }
-            },
+            }
         }
     }
 
@@ -216,7 +235,14 @@ impl<T> Window<T> {
                 None => (window_rect.left, window_rect.top),
             };
 
-            let _ = MoveWindow(self.hwnd, x, y, width + deco_width, height + deco_height, true);
+            let _ = MoveWindow(
+                self.hwnd,
+                x,
+                y,
+                width + deco_width,
+                height + deco_height,
+                true,
+            );
         }
 
         // update font size
@@ -225,7 +251,9 @@ impl<T> Window<T> {
         // update controls
         for component in &mut self.components {
             match component {
-                Component::Button(button) => button.update(&mut self.layout, &self.fonts, self.scale),
+                Component::Button(button) => {
+                    button.update(&mut self.layout, &self.fonts, self.scale)
+                }
             }
         }
     }
@@ -235,7 +263,9 @@ impl<T> Window<T> {
 
         for c in &mut self.components {
             updated |= match c {
-                Component::Button(button) => button.do_state_hook(state, &mut self.layout, &self.fonts),
+                Component::Button(button) => {
+                    button.do_state_hook(state, &mut self.layout, &self.fonts)
+                }
             }
         }
 
@@ -244,7 +274,9 @@ impl<T> Window<T> {
 
             for c in &mut self.components {
                 match c {
-                    Component::Button(button) => button.update(&mut self.layout, &self.fonts, self.scale),
+                    Component::Button(button) => {
+                        button.update(&mut self.layout, &self.fonts, self.scale)
+                    }
                 }
             }
         }
@@ -292,7 +324,8 @@ impl<T> Window<T> {
                     if let Some(c) = self.components.get(id as usize - 1) {
                         match c {
                             Component::Button(button) => {
-                                result = button.wndproc_on_pressed(state, window, msg, wparam, lparam)
+                                result =
+                                    button.wndproc_on_pressed(state, window, msg, wparam, lparam)
                             }
                         }
                     }
@@ -302,13 +335,11 @@ impl<T> Window<T> {
                             self.run_state_hooks(state);
 
                             v
-                        },
+                        }
                         None => DefWindowProcW(window, msg, wparam, lparam),
                     }
                 }
-                _ => {
-                    DefWindowProcW(window, msg, wparam, lparam)
-                }
+                _ => DefWindowProcW(window, msg, wparam, lparam),
             }
         }
     }

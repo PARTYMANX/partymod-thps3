@@ -1,6 +1,15 @@
 use std::ffi::c_void;
 
-use windows::{Win32::{Graphics::Gdi::{CreateFontW, HFONT}, UI::{HiDpi::SystemParametersInfoForDpi, WindowsAndMessaging::{NONCLIENTMETRICSW, SPI_GETNONCLIENTMETRICS}}}, core::PCWSTR};
+use windows::{
+    Win32::{
+        Graphics::Gdi::{CreateFontW, HFONT},
+        UI::{
+            HiDpi::SystemParametersInfoForDpi,
+            WindowsAndMessaging::{NONCLIENTMETRICSW, SPI_GETNONCLIENTMETRICS},
+        },
+    },
+    core::PCWSTR,
+};
 
 pub struct Fonts {
     /// Unscaled copy of the default GUI font, for layout calculation purposes.
@@ -17,7 +26,13 @@ impl Fonts {
         unsafe {
             let mut ncm = NONCLIENTMETRICSW::default();
             ncm.cbSize = size_of::<NONCLIENTMETRICSW>() as u32;
-            let _ = SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS.0, ncm.cbSize, Some(&raw mut ncm as *mut c_void), 0, 96);
+            let _ = SystemParametersInfoForDpi(
+                SPI_GETNONCLIENTMETRICS.0,
+                ncm.cbSize,
+                Some(&raw mut ncm as *mut c_void),
+                0,
+                96,
+            );
 
             let lf = ncm.lfMessageFont;
             let default_font = CreateFontW(
@@ -68,7 +83,13 @@ impl Fonts {
         ncm.cbSize = size_of::<NONCLIENTMETRICSW>() as u32;
         unsafe {
             let dpi = (96.0 * scale) as u32;
-            let _ = SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS.0, ncm.cbSize, Some(&raw mut ncm as *mut c_void), 0, dpi);
+            let _ = SystemParametersInfoForDpi(
+                SPI_GETNONCLIENTMETRICS.0,
+                ncm.cbSize,
+                Some(&raw mut ncm as *mut c_void),
+                0,
+                dpi,
+            );
 
             let lf = ncm.lfMessageFont;
             self.default_font_scaled = CreateFontW(

@@ -1,4 +1,7 @@
-use crate::{component::Component, layout::{HorizontalOffset, Position, Size, VerticalOffset}};
+use crate::{
+    component::Component,
+    layout::{HorizontalOffset, Position, Size, VerticalOffset},
+};
 
 pub struct Container<T> {
     pub(crate) child: Box<Component<T>>,

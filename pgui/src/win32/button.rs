@@ -5,15 +5,24 @@ use windows::{
         Foundation::{HWND, LPARAM, LRESULT, SIZE, WPARAM},
         Graphics::Gdi::{GetDC, GetTextExtentPoint32W, ReleaseDC, SelectObject},
         UI::{
-            Controls::WC_BUTTONW, Input::KeyboardAndMouse::EnableWindow, WindowsAndMessaging::{
-                BS_PUSHBUTTON, CreateWindowExW, HMENU, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, SetWindowTextW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE
-            }
+            Controls::WC_BUTTONW,
+            Input::KeyboardAndMouse::EnableWindow,
+            WindowsAndMessaging::{
+                BS_PUSHBUTTON, CreateWindowExW, HMENU, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW,
+                SetWindowPos, SetWindowTextW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD,
+                WS_TABSTOP, WS_VISIBLE,
+            },
         },
     },
     core::HSTRING,
 };
 
-use crate::{button::ButtonState, genarena::GenArenaKey, layout::{Coords, Layout, Position, Size}, win32::font::Fonts};
+use crate::{
+    button::ButtonState,
+    genarena::GenArenaKey,
+    layout::{Coords, Layout, Position, Size},
+    win32::font::Fonts,
+};
 
 pub struct Button<T> {
     hwnd: HWND,
@@ -28,7 +37,16 @@ pub struct Button<T> {
 }
 
 impl<T> Button<T> {
-    pub fn new(window: HWND, id: u16, initial_state: ButtonState, on_pressed: Option<fn(&mut T)>, state_hook: Option<fn(&T, &mut ButtonState)>, layout_parent: GenArenaKey, layout: &mut Layout, fonts: &Fonts) -> Self {
+    pub fn new(
+        window: HWND,
+        id: u16,
+        initial_state: ButtonState,
+        on_pressed: Option<fn(&mut T)>,
+        state_hook: Option<fn(&T, &mut ButtonState)>,
+        layout_parent: GenArenaKey,
+        layout: &mut Layout,
+        fonts: &Fonts,
+    ) -> Self {
         let label = HSTRING::from(initial_state.label.clone());
         //let utf16_label = label.encode_utf16().collect();
 
@@ -69,11 +87,8 @@ impl<T> Button<T> {
             )
             .unwrap();
 
-            let layout_node = layout.add_node(
-                layout_parent,
-                crate::layout::LayoutNodeType::Leaf,
-                position,
-            );
+            let layout_node =
+                layout.add_node(layout_parent, crate::layout::LayoutNodeType::Leaf, position);
 
             // set the font to the correct one
             SendMessageW(
@@ -125,7 +140,7 @@ impl<T> Button<T> {
             Size::Exact(v) => v,
         };
 
-        Position { 
+        Position {
             w: match initial_position.w {
                 Size::Fill => Size::Fill,
                 Size::Exact(v) => Size::Exact(v),
@@ -166,13 +181,13 @@ impl<T> Button<T> {
             if let Some(coords) = self.coords {
                 unsafe {
                     let _ = SetWindowPos(
-                        self.hwnd, 
-                        None, 
-                        (coords.x as f32 * scale) as i32, 
-                        (coords.y as f32 * scale) as i32, 
-                        (coords.w as f32 * scale) as i32, 
-                        (coords.h as f32 * scale) as i32, 
-                        SWP_NOZORDER | SWP_NOACTIVATE
+                        self.hwnd,
+                        None,
+                        (coords.x as f32 * scale) as i32,
+                        (coords.y as f32 * scale) as i32,
+                        (coords.w as f32 * scale) as i32,
+                        (coords.h as f32 * scale) as i32,
+                        SWP_NOZORDER | SWP_NOACTIVATE,
                     );
                 }
             }

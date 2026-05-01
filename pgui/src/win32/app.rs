@@ -3,10 +3,12 @@ use windows::{
         Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
         System::LibraryLoader::GetModuleHandleW,
         UI::{
-            Controls::{ICC_TAB_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx}, HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext}, WindowsAndMessaging::{
+            Controls::{ICC_TAB_CLASSES, INITCOMMONCONTROLSEX, InitCommonControlsEx},
+            HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext},
+            WindowsAndMessaging::{
                 CS_HREDRAW, CS_VREDRAW, DefWindowProcW, DispatchMessageW, GetMessageW, IDC_ARROW,
                 LoadCursorW, MSG, RegisterClassW, TranslateMessage, UnregisterClassW, WNDCLASSW,
-            }
+            },
         },
     },
     core::w,
@@ -26,7 +28,11 @@ pub struct AppContext {
 
 unsafe impl Sync for AppContext {}
 
-pub fn run<T: 'static>(mut state: T, component: crate::component::Component<T>, window: WindowState) {
+pub fn run<T: 'static>(
+    mut state: T,
+    component: crate::component::Component<T>,
+    window: WindowState,
+) {
     unsafe {
         // TODO: some sort of global setup?
 
@@ -60,9 +66,15 @@ pub fn run<T: 'static>(mut state: T, component: crate::component::Component<T>, 
 
         let _atom = RegisterClassW(&wc);
 
-        let mut window = Window::new(window_class, component, window.width, window.height, window.title);
+        let mut window = Window::new(
+            window_class,
+            component,
+            window.width,
+            window.height,
+            window.title,
+        );
 
-        window.run_state_hooks(&state);  // run state hooks to populate components
+        window.run_state_hooks(&state); // run state hooks to populate components
 
         let ctx = &mut *APP_CONTEXT.get();
         *ctx = Some(AppContext {

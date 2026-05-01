@@ -1,10 +1,10 @@
 use crate::win32::app;
 
-mod layout;
 mod button;
 mod component;
 mod container;
 mod genarena;
+mod layout;
 mod syncunsafecell;
 mod win32;
 mod window;
@@ -29,7 +29,11 @@ fn main() {
                     *st -= 1;
                 })
                 .into(),
-        ]).spacing(16).h_position(layout::HorizontalOffset::Center).v_position(layout::VerticalOffset::Center).into(),
-        window::window("Test Window".to_string()).dimensions(500, 500)
+        ])
+        .spacing(16)
+        .h_position(layout::HorizontalOffset::Center)
+        .v_position(layout::VerticalOffset::Center)
+        .into(),
+        window::window("Test Window".to_string()).dimensions(500, 500),
     );
 }

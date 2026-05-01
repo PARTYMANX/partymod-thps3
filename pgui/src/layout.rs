@@ -8,9 +8,7 @@ pub struct Layout {
 impl Layout {
     pub fn new(width: u32, height: u32) -> Self {
         let root = LayoutNode {
-            relatives: LayoutNodeRelatives::Root {
-                child: None
-            },
+            relatives: LayoutNodeRelatives::Root { child: None },
             position: Position {
                 w: Size::Exact(width),
                 h: Size::Exact(height),
@@ -25,10 +23,7 @@ impl Layout {
         let mut nodes = GenArena::new();
         let head = nodes.push(root);
 
-        Self {
-            nodes,
-            head,
-        }
+        Self { nodes, head }
     }
 
     pub fn get_root_node(&self) -> GenArenaKey {
@@ -42,12 +37,28 @@ impl Layout {
         }
     }
 
-    pub fn add_node(&mut self, parent: GenArenaKey, ty: LayoutNodeType, position: Position) -> GenArenaKey {
+    pub fn add_node(
+        &mut self,
+        parent: GenArenaKey,
+        ty: LayoutNodeType,
+        position: Position,
+    ) -> GenArenaKey {
         let relatives = match ty {
             LayoutNodeType::Leaf => LayoutNodeRelatives::Leaf { _parent: parent },
-            LayoutNodeType::Container => LayoutNodeRelatives::Container { _parent: parent, child: None },
-            LayoutNodeType::HorizontalGroup { spacing } => LayoutNodeRelatives::HorizontalGroup { _parent: parent, children: Vec::new(), spacing },
-            LayoutNodeType::VerticalGroup { spacing } => LayoutNodeRelatives::VerticalGroup { _parent: parent, children: Vec::new(), spacing },
+            LayoutNodeType::Container => LayoutNodeRelatives::Container {
+                _parent: parent,
+                child: None,
+            },
+            LayoutNodeType::HorizontalGroup { spacing } => LayoutNodeRelatives::HorizontalGroup {
+                _parent: parent,
+                children: Vec::new(),
+                spacing,
+            },
+            LayoutNodeType::VerticalGroup { spacing } => LayoutNodeRelatives::VerticalGroup {
+                _parent: parent,
+                children: Vec::new(),
+                spacing,
+            },
         };
 
         let node = LayoutNode {
@@ -59,21 +70,29 @@ impl Layout {
         let node_key = self.nodes.push(node);
 
         let parent_node = self.nodes.get_mut(parent).unwrap();
-        
+
         match &mut parent_node.relatives {
             LayoutNodeRelatives::Leaf { _parent: _ } => panic!(),
             LayoutNodeRelatives::Root { child } => {
                 *child = Some(node_key);
-            },
+            }
             LayoutNodeRelatives::Container { _parent: _, child } => {
                 *child = Some(node_key);
-            },
-            LayoutNodeRelatives::HorizontalGroup { _parent: _, children, spacing: _ } => {
+            }
+            LayoutNodeRelatives::HorizontalGroup {
+                _parent: _,
+                children,
+                spacing: _,
+            } => {
                 children.push(node_key);
-            },
-            LayoutNodeRelatives::VerticalGroup { _parent: _, children, spacing: _ } => {
+            }
+            LayoutNodeRelatives::VerticalGroup {
+                _parent: _,
+                children,
+                spacing: _,
+            } => {
                 children.push(node_key);
-            },
+            }
         }
 
         node_key
@@ -108,7 +127,12 @@ impl Layout {
     }
 
     // calculates the size and relative positioning of a node given its parent's bounds. returns its own bounds
-    fn calculate_relative_node_coords(&mut self, node_key: GenArenaKey, parent_bounds: Coords, greedy: bool) -> Coords {
+    fn calculate_relative_node_coords(
+        &mut self,
+        node_key: GenArenaKey,
+        parent_bounds: Coords,
+        greedy: bool,
+    ) -> Coords {
         let node = self.nodes.get(node_key).unwrap();
 
         // amount to subtract from bounds
@@ -119,11 +143,13 @@ impl Layout {
         };
         // size of bounds
         let (width, is_exact_width) = match node.position.w {
-            Size::Fill => if greedy {
-                (parent_bounds.w - offset_x, true)
-            } else {
-                (0, false)
-            },
+            Size::Fill => {
+                if greedy {
+                    (parent_bounds.w - offset_x, true)
+                } else {
+                    (0, false)
+                }
+            }
             Size::Min => (0, false),
             Size::Exact(v) => (v, true),
         };
@@ -136,11 +162,13 @@ impl Layout {
         };
         // size of bounds
         let (height, is_exact_height) = match node.position.h {
-            Size::Fill => if greedy {
-                (parent_bounds.h - offset_y, true)
-            } else {
-                (0, false)
-            },
+            Size::Fill => {
+                if greedy {
+                    (parent_bounds.h - offset_y, true)
+                } else {
+                    (0, false)
+                }
+            }
             Size::Min => (0, false),
             Size::Exact(v) => (v, true),
         };
@@ -182,11 +210,12 @@ impl Layout {
                     // ignore child coords, we don't need minimum size
                     self.calculate_relative_node_coords(*child_key, available_bounds, true);
                 }
-            },
-            LayoutNodeRelatives::Leaf { _parent: _ } => {},
+            }
+            LayoutNodeRelatives::Leaf { _parent: _ } => {}
             LayoutNodeRelatives::Container { _parent: _, child } => {
                 if let Some(child_key) = child {
-                    let child_coords = self.calculate_relative_node_coords(*child_key, available_bounds, true);
+                    let child_coords =
+                        self.calculate_relative_node_coords(*child_key, available_bounds, true);
 
                     if !is_exact_width {
                         coords.w += child_coords.w;
@@ -195,8 +224,12 @@ impl Layout {
                         coords.h += child_coords.h;
                     }
                 }
-            },
-            LayoutNodeRelatives::HorizontalGroup { _parent: _, children, spacing } => {
+            }
+            LayoutNodeRelatives::HorizontalGroup {
+                _parent: _,
+                children,
+                spacing,
+            } => {
                 let mut children_width = 0;
                 let mut max_h = 0;
                 let mut remaining_bounds = available_bounds;
@@ -209,7 +242,8 @@ impl Layout {
                 for (i, child_key) in children_list.iter().enumerate() {
                     let is_last = i == children_list.len() - 1;
 
-                    let child_bounds = self.calculate_relative_node_coords(*child_key, remaining_bounds, is_last);
+                    let child_bounds =
+                        self.calculate_relative_node_coords(*child_key, remaining_bounds, is_last);
 
                     if !is_last {
                         children_width += child_bounds.w + space;
@@ -229,8 +263,12 @@ impl Layout {
                 if !is_exact_height {
                     coords.h += max_h;
                 }
-            },
-            LayoutNodeRelatives::VerticalGroup { _parent: _, children, spacing } => {
+            }
+            LayoutNodeRelatives::VerticalGroup {
+                _parent: _,
+                children,
+                spacing,
+            } => {
                 let mut children_height = 0;
                 let mut max_w = 0;
                 let mut remaining_bounds = available_bounds;
@@ -243,7 +281,8 @@ impl Layout {
                 for (i, child_key) in children_list.iter().enumerate() {
                     let is_last = i == children_list.len() - 1;
 
-                    let child_bounds = self.calculate_relative_node_coords(*child_key, remaining_bounds, is_last);
+                    let child_bounds =
+                        self.calculate_relative_node_coords(*child_key, remaining_bounds, is_last);
 
                     if !is_last {
                         children_height += child_bounds.h + space;
@@ -263,7 +302,7 @@ impl Layout {
                 if !is_exact_height {
                     coords.h += children_height;
                 }
-            },
+            }
         }
 
         let node_mut = self.nodes.get_mut(node_key).unwrap();
@@ -271,26 +310,34 @@ impl Layout {
         // now that we know this node's size, we can align it
         match node_mut.position.x {
             HorizontalOffset::AlignLeft(v) => coords.x += v as i32,
-            HorizontalOffset::Center => if greedy {
-                let node_width = coords.w + (node_mut.position.h_padding * 2);
-                coords.x += ((parent_bounds.w - node_width) / 2) as i32;
-            },
-            HorizontalOffset::AlignRight(v) => if greedy {
-                let node_width = coords.w + (node_mut.position.h_padding * 2);
-                coords.x += ((parent_bounds.w - node_width) - v) as i32;
-            },
+            HorizontalOffset::Center => {
+                if greedy {
+                    let node_width = coords.w + (node_mut.position.h_padding * 2);
+                    coords.x += ((parent_bounds.w - node_width) / 2) as i32;
+                }
+            }
+            HorizontalOffset::AlignRight(v) => {
+                if greedy {
+                    let node_width = coords.w + (node_mut.position.h_padding * 2);
+                    coords.x += ((parent_bounds.w - node_width) - v) as i32;
+                }
+            }
         }
 
         match node_mut.position.y {
             VerticalOffset::AlignTop(v) => coords.y += v as i32,
-            VerticalOffset::Center => if greedy {
-                let node_height = coords.h + (node_mut.position.v_padding * 2);
-                coords.y += ((parent_bounds.h - node_height) / 2) as i32;
-            },
-            VerticalOffset::AlignBottom(v) => if greedy {
-                let node_height = coords.h + (node_mut.position.v_padding * 2);
-                coords.y += ((parent_bounds.h - node_height) - v) as i32;
-            },
+            VerticalOffset::Center => {
+                if greedy {
+                    let node_height = coords.h + (node_mut.position.v_padding * 2);
+                    coords.y += ((parent_bounds.h - node_height) / 2) as i32;
+                }
+            }
+            VerticalOffset::AlignBottom(v) => {
+                if greedy {
+                    let node_height = coords.h + (node_mut.position.v_padding * 2);
+                    coords.y += ((parent_bounds.h - node_height) - v) as i32;
+                }
+            }
         }
 
         node_mut.coords = Some(coords);
@@ -315,27 +362,35 @@ impl Layout {
                     // ignore child coords, we don't need minimum size
                     self.calculate_node_positions(*child_key, coords);
                 }
-            },
-            LayoutNodeRelatives::Leaf { _parent: _ } => {},
+            }
+            LayoutNodeRelatives::Leaf { _parent: _ } => {}
             LayoutNodeRelatives::Container { _parent: _, child } => {
                 if let Some(child_key) = child {
                     self.calculate_node_positions(*child_key, coords);
                 }
-            },
-            LayoutNodeRelatives::HorizontalGroup { _parent: _, children, spacing: _ } => {
+            }
+            LayoutNodeRelatives::HorizontalGroup {
+                _parent: _,
+                children,
+                spacing: _,
+            } => {
                 // borrow checker gets mad if we use children directly
                 // ...so clone it. really bad stuff
                 for child_key in &children.clone() {
                     self.calculate_node_positions(*child_key, coords);
                 }
-            },
-            LayoutNodeRelatives::VerticalGroup { _parent: _, children, spacing: _ } => {
+            }
+            LayoutNodeRelatives::VerticalGroup {
+                _parent: _,
+                children,
+                spacing: _,
+            } => {
                 // borrow checker gets mad if we use children directly
                 // ...so clone it. really bad stuff
                 for child_key in &children.clone() {
                     self.calculate_node_positions(*child_key, coords);
                 }
-            },
+            }
         }
 
         let node_mut = self.nodes.get_mut(node_key).unwrap();
