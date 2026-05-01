@@ -14,7 +14,7 @@ use windows::{
     core::w,
 };
 
-use crate::{syncunsafecell::SyncUnsafeCell, window::WindowState};
+use crate::syncunsafecell::SyncUnsafeCell;
 
 use super::window::Window;
 
@@ -31,7 +31,7 @@ unsafe impl Sync for AppContext {}
 pub fn run<T: 'static>(
     mut state: T,
     component: crate::component::Component<T>,
-    window: WindowState,
+    window: crate::window::Window<T>,
 ) {
     unsafe {
         // TODO: some sort of global setup?
@@ -72,9 +72,11 @@ pub fn run<T: 'static>(
             window.width,
             window.height,
             window.title,
+            window.post_update,
         );
 
         window.run_state_hooks(&state); // run state hooks to populate components
+        window.run_post_update(&mut state);
 
         let ctx = &mut *APP_CONTEXT.get();
         *ctx = Some(AppContext {

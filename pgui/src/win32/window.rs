@@ -38,6 +38,8 @@ pub struct Window<T> {
     height: u32,
     _title: HSTRING,
 
+    post_update: Option<fn(&mut T)>,
+
     components: Vec<Component<T>>,
     layout: Layout,
 
@@ -51,6 +53,7 @@ impl<T> Window<T> {
         width: u32,
         height: u32,
         title: String,
+        post_update: Option<fn(&mut T)>,
     ) -> Self {
         let title = HSTRING::from(title);
 
@@ -125,6 +128,8 @@ impl<T> Window<T> {
             width,
             height,
             _title: title,
+
+            post_update,
 
             components: native_components,
             layout,
@@ -282,6 +287,14 @@ impl<T> Window<T> {
         }
     }
 
+    pub fn run_post_update(&mut self, state: &mut T) {
+        if let Some(f) = self.post_update {
+            (f)(state);
+
+            self.run_state_hooks(state);
+        }
+    }
+
     pub fn wndproc(
         &mut self,
         state: &mut T,
@@ -333,6 +346,8 @@ impl<T> Window<T> {
                     match result {
                         Some(v) => {
                             self.run_state_hooks(state);
+
+                            self.run_post_update(state);
 
                             v
                         }
