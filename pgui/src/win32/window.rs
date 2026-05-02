@@ -20,14 +20,13 @@ use windows::{
 };
 
 use crate::{
-    button::ButtonState,
-    genarena::GenArenaKey,
-    layout::Layout,
-    win32::{button::Button, font::Fonts},
+    button::ButtonState, checkbox::CheckboxState, genarena::GenArenaKey, layout::Layout, text::TextState, win32::{button::Button, checkbox::Checkbox, font::Fonts, text::Text}
 };
 
 pub enum Component<T> {
     Button(Button<T>),
+    Checkbox(Checkbox<T>),
+    Text(Text<T>),
 }
 
 pub struct Window<T> {
@@ -118,6 +117,8 @@ impl<T> Window<T> {
         for native_component in &mut native_components {
             match native_component {
                 Component::Button(button) => button.update(&mut layout, &fonts, 1.0),
+                Component::Checkbox(checkbox) => checkbox.update(&mut layout, &fonts, 1.0),
+                Component::Text(text) => text.update(&mut layout, &fonts, 1.0),
             }
         }
 
@@ -170,6 +171,46 @@ impl<T> Window<T> {
                 ));
 
                 native_components.push(button);
+            }
+            crate::component::Component::Checkbox(checkbox) => {
+                let initial_state = CheckboxState {
+                    label: checkbox.label,
+                    checked: checkbox.checked,
+                    enabled: checkbox.enabled,
+                    position: checkbox.position,
+                };
+
+                let checkbox = Component::Checkbox(Checkbox::new(
+                    window,
+                    (native_components.len() + 1) as u16,
+                    initial_state,
+                    checkbox.on_toggle,
+                    checkbox.state_hook,
+                    layout_parent,
+                    layout,
+                    fonts,
+                ));
+
+                native_components.push(checkbox);
+            }
+            crate::component::Component::Text(text) => {
+                let initial_state = TextState {
+                    text: text.text,
+                    enabled: text.enabled,
+                    position: text.position,
+                };
+
+                let text = Component::Text(Text::new(
+                    window,
+                    (native_components.len() + 1) as u16,
+                    initial_state,
+                    text.state_hook,
+                    layout_parent,
+                    layout,
+                    fonts,
+                ));
+
+                native_components.push(text);
             }
             crate::component::Component::Container(container) => {
                 let node = layout.add_node(
@@ -259,6 +300,12 @@ impl<T> Window<T> {
                 Component::Button(button) => {
                     button.update(&mut self.layout, &self.fonts, self.scale)
                 }
+                Component::Checkbox(checkbox) => {
+                    checkbox.update(&mut self.layout, &self.fonts, self.scale)
+                }
+                Component::Text(text) => {
+                    text.update(&mut self.layout, &self.fonts, self.scale)
+                }
             }
         }
     }
@@ -271,6 +318,12 @@ impl<T> Window<T> {
                 Component::Button(button) => {
                     button.do_state_hook(state, &mut self.layout, &self.fonts)
                 }
+                Component::Checkbox(checkbox) => {
+                    checkbox.do_state_hook(state, &mut self.layout, &self.fonts)
+                }
+                Component::Text(text) => {
+                    text.do_state_hook(state, &mut self.layout, &self.fonts)
+                }
             }
         }
 
@@ -281,6 +334,12 @@ impl<T> Window<T> {
                 match c {
                     Component::Button(button) => {
                         button.update(&mut self.layout, &self.fonts, self.scale)
+                    }
+                    Component::Checkbox(checkbox) => {
+                        checkbox.update(&mut self.layout, &self.fonts, self.scale)
+                    }
+                    Component::Text(text) => {
+                        text.update(&mut self.layout, &self.fonts, self.scale)
                     }
                 }
             }
@@ -334,12 +393,17 @@ impl<T> Window<T> {
 
                     let mut result = None;
 
-                    if let Some(c) = self.components.get(id as usize - 1) {
+                    if let Some(c) = self.components.get_mut(id as usize - 1) {
                         match c {
                             Component::Button(button) => {
                                 result =
                                     button.wndproc_on_pressed(state, window, msg, wparam, lparam)
                             }
+                            Component::Checkbox(checkbox) => {
+                                result =
+                                    checkbox.wndproc_on_toggled(state, window, msg, wparam, lparam)
+                            }
+                            Component::Text(_) => {}
                         }
                     }
 

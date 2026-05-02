@@ -2,14 +2,14 @@ use std::ffi::c_void;
 
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, LRESULT, SIZE, WPARAM},
+        Foundation::{HWND, LPARAM, SIZE, WPARAM},
         Graphics::Gdi::{GetDC, GetTextExtentPoint32W, ReleaseDC, SelectObject},
         UI::{
-            Controls::WC_BUTTONW,
+            Controls::WC_STATICW,
             Input::KeyboardAndMouse::EnableWindow,
             WindowsAndMessaging::{
-                BS_PUSHBUTTON, CreateWindowExW, HMENU, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW,
-                SetWindowPos, SetWindowTextW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD,
+                CreateWindowExW, HMENU, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW,
+                SetWindowPos, SetWindowTextW, WINDOW_EX_STYLE, WM_SETFONT, WS_CHILD,
                 WS_TABSTOP, WS_VISIBLE,
             },
         },
@@ -18,43 +18,41 @@ use windows::{
 };
 
 use crate::{
-    button::ButtonState,
+    text::TextState,
     genarena::GenArenaKey,
     layout::{Coords, Layout, Position, Size},
     win32::font::Fonts,
 };
 
-pub struct Button<T> {
+pub struct Text<T> {
     hwnd: HWND,
     _id: u16,
-    label: HSTRING,
-    current_state: ButtonState,
-    on_pressed: Option<fn(&mut T)>,
-    state_hook: Option<fn(&T, &mut ButtonState)>,
+    text: HSTRING,
+    current_state: TextState,
+    state_hook: Option<fn(&T, &mut TextState)>,
     layout_node: GenArenaKey,
     coords: Option<Coords>,
     current_scale: f32,
 }
 
-impl<T> Button<T> {
+impl<T> Text<T> {
     pub fn new(
         window: HWND,
         id: u16,
-        initial_state: ButtonState,
-        on_pressed: Option<fn(&mut T)>,
-        state_hook: Option<fn(&T, &mut ButtonState)>,
+        initial_state: TextState,
+        state_hook: Option<fn(&T, &mut TextState)>,
         layout_parent: GenArenaKey,
         layout: &mut Layout,
         fonts: &Fonts,
     ) -> Self {
-        let label = HSTRING::from(initial_state.label.clone());
+        let text = HSTRING::from(initial_state.text.clone());
         //let utf16_label = label.encode_utf16().collect();
 
         //PCWSTR::from(utf16_label);
 
         let (hwnd, layout_node) = unsafe {
             // get size of label (this could probably be moved elsewhere since i assume it'll get reused)
-            let position = Self::calc_position(initial_state.position, &label, fonts);
+            let position = Self::calc_position(initial_state.position, &text, fonts);
 
             let width = match position.w {
                 Size::Fill => 0,
@@ -70,12 +68,11 @@ impl<T> Button<T> {
 
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
-                WC_BUTTONW,
-                &label,
+                WC_STATICW,
+                &text,
                 WS_TABSTOP
                     | WS_VISIBLE
-                    | WS_CHILD
-                    | WINDOW_STYLE(BS_PUSHBUTTON as u32),
+                    | WS_CHILD,
                 0,
                 0,
                 width as i32,
@@ -106,9 +103,8 @@ impl<T> Button<T> {
         Self {
             hwnd,
             _id: id,
-            label,
+            text,
             current_state: initial_state,
-            on_pressed,
             state_hook,
             layout_node,
             coords: None,
@@ -129,14 +125,14 @@ impl<T> Button<T> {
         };
 
         let width = match initial_position.w {
-            Size::Fill => text_size.cx as u32 + 32,
-            Size::Min => text_size.cx as u32 + 32,
+            Size::Fill => text_size.cx as u32,
+            Size::Min => text_size.cx as u32,
             Size::Exact(v) => v,
         };
 
         let height = match initial_position.h {
-            Size::Fill => fonts.default_font_height as u32 + 16,
-            Size::Min => fonts.default_font_height as u32 + 16,
+            Size::Fill => text_size.cy as u32,
+            Size::Min => text_size.cy as u32,
             Size::Exact(v) => v,
         };
 
@@ -205,22 +201,6 @@ impl<T> Button<T> {
         }
     }
 
-    pub fn wndproc_on_pressed(
-        &self,
-        state: &mut T,
-        _hwnd: HWND,
-        _msg: u32,
-        _wparam: WPARAM,
-        _lparam: LPARAM,
-    ) -> Option<LRESULT> {
-        if let Some(f) = self.on_pressed {
-            (f)(state);
-            Some(LRESULT(0))
-        } else {
-            None
-        }
-    }
-
     pub fn do_state_hook(&mut self, state: &T, layout: &mut Layout, fonts: &Fonts) -> bool {
         if let Some(f) = self.state_hook {
             let mut new_state = self.current_state.clone();
@@ -232,11 +212,11 @@ impl<T> Button<T> {
                 unsafe {
                     let _ = EnableWindow(self.hwnd, self.current_state.enabled);
 
-                    self.label = HSTRING::from(self.current_state.label.clone());
-                    let _ = SetWindowTextW(self.hwnd, &self.label);
+                    self.text = HSTRING::from(self.current_state.text.clone());
+                    let _ = SetWindowTextW(self.hwnd, &self.text);
                 }
 
-                let position = Self::calc_position(self.current_state.position, &self.label, fonts);
+                let position = Self::calc_position(self.current_state.position, &self.text, fonts);
                 layout.set_node_position(self.layout_node, position);
                 self.coords = None;
 

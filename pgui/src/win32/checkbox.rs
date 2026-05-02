@@ -5,12 +5,10 @@ use windows::{
         Foundation::{HWND, LPARAM, LRESULT, SIZE, WPARAM},
         Graphics::Gdi::{GetDC, GetTextExtentPoint32W, ReleaseDC, SelectObject},
         UI::{
-            Controls::WC_BUTTONW,
+            Controls::{BST_CHECKED, BST_UNCHECKED, WC_BUTTONW},
             Input::KeyboardAndMouse::EnableWindow,
             WindowsAndMessaging::{
-                BS_PUSHBUTTON, CreateWindowExW, HMENU, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW,
-                SetWindowPos, SetWindowTextW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD,
-                WS_TABSTOP, WS_VISIBLE,
+                BM_SETCHECK, BS_CHECKBOX, CreateWindowExW, HMENU, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, SetWindowTextW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE
             },
         },
     },
@@ -18,31 +16,31 @@ use windows::{
 };
 
 use crate::{
-    button::ButtonState,
+    checkbox::CheckboxState,
     genarena::GenArenaKey,
     layout::{Coords, Layout, Position, Size},
     win32::font::Fonts,
 };
 
-pub struct Button<T> {
+pub struct Checkbox<T> {
     hwnd: HWND,
     _id: u16,
     label: HSTRING,
-    current_state: ButtonState,
-    on_pressed: Option<fn(&mut T)>,
-    state_hook: Option<fn(&T, &mut ButtonState)>,
+    current_state: CheckboxState,
+    on_toggled: Option<fn(&mut T, bool)>,
+    state_hook: Option<fn(&T, &mut CheckboxState)>,
     layout_node: GenArenaKey,
     coords: Option<Coords>,
     current_scale: f32,
 }
 
-impl<T> Button<T> {
+impl<T> Checkbox<T> {
     pub fn new(
         window: HWND,
         id: u16,
-        initial_state: ButtonState,
-        on_pressed: Option<fn(&mut T)>,
-        state_hook: Option<fn(&T, &mut ButtonState)>,
+        initial_state: CheckboxState,
+        on_toggled: Option<fn(&mut T, bool)>,
+        state_hook: Option<fn(&T, &mut CheckboxState)>,
         layout_parent: GenArenaKey,
         layout: &mut Layout,
         fonts: &Fonts,
@@ -75,7 +73,7 @@ impl<T> Button<T> {
                 WS_TABSTOP
                     | WS_VISIBLE
                     | WS_CHILD
-                    | WINDOW_STYLE(BS_PUSHBUTTON as u32),
+                    | WINDOW_STYLE(BS_CHECKBOX as u32),
                 0,
                 0,
                 width as i32,
@@ -108,7 +106,7 @@ impl<T> Button<T> {
             _id: id,
             label,
             current_state: initial_state,
-            on_pressed,
+            on_toggled,
             state_hook,
             layout_node,
             coords: None,
@@ -117,7 +115,7 @@ impl<T> Button<T> {
     }
 
     fn calc_position(initial_position: Position, label: &HSTRING, fonts: &Fonts) -> Position {
-        // get size of label (this could probably be moved elsewhere since i assume it'll get reused)
+        // get size of label
         let text_size = unsafe {
             let hdc = GetDC(None);
             let _ = SelectObject(hdc, fonts.default_font.into());
@@ -129,14 +127,14 @@ impl<T> Button<T> {
         };
 
         let width = match initial_position.w {
-            Size::Fill => text_size.cx as u32 + 32,
-            Size::Min => text_size.cx as u32 + 32,
+            Size::Fill => text_size.cx as u32 + 27,
+            Size::Min => text_size.cx as u32 + 27,
             Size::Exact(v) => v,
         };
 
         let height = match initial_position.h {
-            Size::Fill => fonts.default_font_height as u32 + 16,
-            Size::Min => fonts.default_font_height as u32 + 16,
+            Size::Fill => 26.max(text_size.cy as u32),
+            Size::Min => 26.max(text_size.cy as u32),
             Size::Exact(v) => v,
         };
 
@@ -205,16 +203,28 @@ impl<T> Button<T> {
         }
     }
 
-    pub fn wndproc_on_pressed(
-        &self,
+    pub fn wndproc_on_toggled(
+        &mut self,
         state: &mut T,
         _hwnd: HWND,
         _msg: u32,
         _wparam: WPARAM,
         _lparam: LPARAM,
     ) -> Option<LRESULT> {
-        if let Some(f) = self.on_pressed {
-            (f)(state);
+        unsafe {
+            //let checked = SendMessageW(self.hwnd, BM_GETCHECK, None, None) == LRESULT(BST_CHECKED.0 as isize);
+
+            self.current_state.checked = !self.current_state.checked;
+
+            if self.current_state.checked {
+                SendMessageW(self.hwnd, BM_SETCHECK, Some(WPARAM(BST_CHECKED.0 as usize)), None);
+            } else {
+                SendMessageW(self.hwnd, BM_SETCHECK, Some(WPARAM(BST_UNCHECKED.0 as usize)), None);
+            }
+        }
+
+        if let Some(f) = self.on_toggled {
+            (f)(state, self.current_state.checked);
             Some(LRESULT(0))
         } else {
             None
@@ -234,6 +244,12 @@ impl<T> Button<T> {
 
                     self.label = HSTRING::from(self.current_state.label.clone());
                     let _ = SetWindowTextW(self.hwnd, &self.label);
+
+                    if self.current_state.checked {
+                        SendMessageW(self.hwnd, BM_SETCHECK, Some(WPARAM(BST_CHECKED.0 as usize)), None);
+                    } else {
+                        SendMessageW(self.hwnd, BM_SETCHECK, Some(WPARAM(BST_UNCHECKED.0 as usize)), None);
+                    }
                 }
 
                 let position = Self::calc_position(self.current_state.position, &self.label, fonts);
