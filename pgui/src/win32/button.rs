@@ -8,9 +8,7 @@ use windows::{
             Controls::WC_BUTTONW,
             Input::KeyboardAndMouse::EnableWindow,
             WindowsAndMessaging::{
-                BS_PUSHBUTTON, CreateWindowExW, HMENU, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW,
-                SetWindowPos, SetWindowTextW, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD,
-                WS_TABSTOP, WS_VISIBLE,
+                BS_PUSHBUTTON, CreateWindowExW, HMENU, SHOW_WINDOW_CMD, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE
             },
         },
     },
@@ -155,6 +153,18 @@ impl<T> Button<T> {
             y: initial_position.y,
             h_padding: initial_position.h_padding,
             v_padding: initial_position.v_padding,
+        }
+    }
+
+    pub fn hide(&self, hidden: bool) {
+        let show_cmd = if hidden {
+            SHOW_WINDOW_CMD(0)
+        } else {
+            SHOW_WINDOW_CMD(1)
+        };
+
+        unsafe {
+            let _ = ShowWindow(self.hwnd, show_cmd);
         }
     }
 

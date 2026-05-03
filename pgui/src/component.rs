@@ -3,6 +3,8 @@ pub enum Component<T> {
     Checkbox(crate::checkbox::Checkbox<T>),
     Text(crate::text::Text<T>),
     Container(crate::container::Container<T>),
+    Groupbox(crate::groupbox::Groupbox<T>),
+    Tabs(crate::tabs::Tabs<T>),
     Horizontal(crate::container::Horizontal<T>),
     Vertical(crate::container::Vertical<T>),
 }
@@ -28,6 +30,18 @@ impl<T> From<crate::text::Text<T>> for Component<T> {
 impl<T> From<crate::container::Container<T>> for Component<T> {
     fn from(value: crate::container::Container<T>) -> Self {
         Component::Container(value)
+    }
+}
+
+impl<T> From<crate::groupbox::Groupbox<T>> for Component<T> {
+    fn from(value: crate::groupbox::Groupbox<T>) -> Self {
+        Component::Groupbox(value)
+    }
+}
+
+impl<T> From<crate::tabs::Tabs<T>> for Component<T> {
+    fn from(value: crate::tabs::Tabs<T>) -> Self {
+        Component::Tabs(value)
     }
 }
 

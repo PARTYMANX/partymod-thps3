@@ -49,6 +49,10 @@ impl Layout {
                 _parent: parent,
                 child: None,
             },
+            LayoutNodeType::MultiContainer => LayoutNodeRelatives::MultiContainer { 
+                _parent: parent, 
+                children: Vec::new(),
+            },
             LayoutNodeType::HorizontalGroup { spacing } => LayoutNodeRelatives::HorizontalGroup {
                 _parent: parent,
                 children: Vec::new(),
@@ -78,6 +82,12 @@ impl Layout {
             }
             LayoutNodeRelatives::Container { _parent: _, child } => {
                 *child = Some(node_key);
+            }
+            LayoutNodeRelatives::MultiContainer {
+                _parent: _,
+                children,
+            } => {
+                children.push(node_key);
             }
             LayoutNodeRelatives::HorizontalGroup {
                 _parent: _,
@@ -145,7 +155,7 @@ impl Layout {
         let (width, is_exact_width) = match node.position.w {
             Size::Fill => {
                 if greedy {
-                    (parent_bounds.w - offset_x, true)
+                    (parent_bounds.w - offset_x - (node.position.h_padding * 2), true)
                 } else {
                     (0, false)
                 }
@@ -164,7 +174,7 @@ impl Layout {
         let (height, is_exact_height) = match node.position.h {
             Size::Fill => {
                 if greedy {
-                    (parent_bounds.h - offset_y, true)
+                    (parent_bounds.h - offset_y - (node.position.v_padding * 2), true)
                 } else {
                     (0, false)
                 }
@@ -225,6 +235,27 @@ impl Layout {
                     }
                 }
             }
+            LayoutNodeRelatives::MultiContainer { _parent: _, children } => {
+                // borrow checker gets mad if we use children directly
+                // ...so clone it. really bad stuff
+                for child_key in &children.clone() {
+                    let mut component_coords = coords;
+
+                    let child_coords =
+                        self.calculate_relative_node_coords(*child_key, available_bounds, true);
+
+                    if !is_exact_width {
+                        component_coords.w += child_coords.w;
+
+                        coords.w = coords.w.max(component_coords.w);
+                    }
+                    if !is_exact_height {
+                        component_coords.h += child_coords.h;
+
+                        coords.h = coords.h.max(component_coords.h);
+                    }
+                }
+            }
             LayoutNodeRelatives::HorizontalGroup {
                 _parent: _,
                 children,
@@ -251,7 +282,7 @@ impl Layout {
                         children_width += child_bounds.w;
                     }
 
-                    remaining_bounds.w = available_bounds.w - children_width;
+                    remaining_bounds.w = available_bounds.w.saturating_sub(children_width);
                     remaining_bounds.x = children_width as i32;
 
                     max_h = max_h.max(child_bounds.h as u32);
@@ -290,7 +321,7 @@ impl Layout {
                         children_height += child_bounds.h;
                     }
 
-                    remaining_bounds.h = available_bounds.h - children_height;
+                    remaining_bounds.h = available_bounds.h.saturating_sub(children_height);
                     remaining_bounds.y = children_height as i32;
 
                     max_w = max_w.max(child_bounds.w as u32);
@@ -313,13 +344,13 @@ impl Layout {
             HorizontalOffset::Center => {
                 if greedy {
                     let node_width = coords.w + (node_mut.position.h_padding * 2);
-                    coords.x += ((parent_bounds.w - node_width) / 2) as i32;
+                    coords.x += ((parent_bounds.w.saturating_sub(node_width)) / 2) as i32;
                 }
             }
             HorizontalOffset::AlignRight(v) => {
                 if greedy {
                     let node_width = coords.w + (node_mut.position.h_padding * 2);
-                    coords.x += ((parent_bounds.w - node_width) - v) as i32;
+                    coords.x += ((parent_bounds.w.saturating_sub(node_width)).saturating_sub(v)) as i32;
                 }
             }
         }
@@ -329,13 +360,13 @@ impl Layout {
             VerticalOffset::Center => {
                 if greedy {
                     let node_height = coords.h + (node_mut.position.v_padding * 2);
-                    coords.y += ((parent_bounds.h - node_height) / 2) as i32;
+                    coords.y += ((parent_bounds.h.saturating_sub(node_height)) / 2) as i32;
                 }
             }
             VerticalOffset::AlignBottom(v) => {
                 if greedy {
                     let node_height = coords.h + (node_mut.position.v_padding * 2);
-                    coords.y += ((parent_bounds.h - node_height) - v) as i32;
+                    coords.y += ((parent_bounds.h.saturating_sub(node_height)).saturating_sub(v)) as i32;
                 }
             }
         }
@@ -366,6 +397,13 @@ impl Layout {
             LayoutNodeRelatives::Leaf { _parent: _ } => {}
             LayoutNodeRelatives::Container { _parent: _, child } => {
                 if let Some(child_key) = child {
+                    self.calculate_node_positions(*child_key, coords);
+                }
+            }
+            LayoutNodeRelatives::MultiContainer { _parent: _, children } => {
+                // borrow checker gets mad if we use children directly
+                // ...so clone it. really bad stuff
+                for child_key in &children.clone() {
                     self.calculate_node_positions(*child_key, coords);
                 }
             }
@@ -413,6 +451,7 @@ struct LayoutNode {
 pub enum LayoutNodeType {
     Leaf,
     Container,
+    MultiContainer,
     HorizontalGroup { spacing: u32 },
     VerticalGroup { spacing: u32 },
 }
@@ -427,6 +466,10 @@ enum LayoutNodeRelatives {
     Container {
         _parent: GenArenaKey,
         child: Option<GenArenaKey>,
+    },
+    MultiContainer {
+        _parent: GenArenaKey,
+        children: Vec<GenArenaKey>,
     },
     HorizontalGroup {
         _parent: GenArenaKey,
