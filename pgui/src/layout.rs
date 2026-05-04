@@ -49,8 +49,8 @@ impl Layout {
                 _parent: parent,
                 child: None,
             },
-            LayoutNodeType::MultiContainer => LayoutNodeRelatives::MultiContainer { 
-                _parent: parent, 
+            LayoutNodeType::MultiContainer => LayoutNodeRelatives::MultiContainer {
+                _parent: parent,
                 children: Vec::new(),
             },
             LayoutNodeType::HorizontalGroup { spacing } => LayoutNodeRelatives::HorizontalGroup {
@@ -155,7 +155,10 @@ impl Layout {
         let (width, is_exact_width) = match node.position.w {
             Size::Fill => {
                 if greedy {
-                    (parent_bounds.w - offset_x - (node.position.h_padding * 2), true)
+                    (
+                        parent_bounds.w - offset_x - (node.position.h_padding * 2),
+                        true,
+                    )
                 } else {
                     (0, false)
                 }
@@ -174,7 +177,10 @@ impl Layout {
         let (height, is_exact_height) = match node.position.h {
             Size::Fill => {
                 if greedy {
-                    (parent_bounds.h - offset_y - (node.position.v_padding * 2), true)
+                    (
+                        parent_bounds.h - offset_y - (node.position.v_padding * 2),
+                        true,
+                    )
                 } else {
                     (0, false)
                 }
@@ -235,7 +241,10 @@ impl Layout {
                     }
                 }
             }
-            LayoutNodeRelatives::MultiContainer { _parent: _, children } => {
+            LayoutNodeRelatives::MultiContainer {
+                _parent: _,
+                children,
+            } => {
                 // borrow checker gets mad if we use children directly
                 // ...so clone it. really bad stuff
                 for child_key in &children.clone() {
@@ -350,7 +359,8 @@ impl Layout {
             HorizontalOffset::AlignRight(v) => {
                 if greedy {
                     let node_width = coords.w + (node_mut.position.h_padding * 2);
-                    coords.x += ((parent_bounds.w.saturating_sub(node_width)).saturating_sub(v)) as i32;
+                    coords.x +=
+                        ((parent_bounds.w.saturating_sub(node_width)).saturating_sub(v)) as i32;
                 }
             }
         }
@@ -366,7 +376,8 @@ impl Layout {
             VerticalOffset::AlignBottom(v) => {
                 if greedy {
                     let node_height = coords.h + (node_mut.position.v_padding * 2);
-                    coords.y += ((parent_bounds.h.saturating_sub(node_height)).saturating_sub(v)) as i32;
+                    coords.y +=
+                        ((parent_bounds.h.saturating_sub(node_height)).saturating_sub(v)) as i32;
                 }
             }
         }
@@ -400,7 +411,10 @@ impl Layout {
                     self.calculate_node_positions(*child_key, coords);
                 }
             }
-            LayoutNodeRelatives::MultiContainer { _parent: _, children } => {
+            LayoutNodeRelatives::MultiContainer {
+                _parent: _,
+                children,
+            } => {
                 // borrow checker gets mad if we use children directly
                 // ...so clone it. really bad stuff
                 for child_key in &children.clone() {

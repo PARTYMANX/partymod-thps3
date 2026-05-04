@@ -2,19 +2,32 @@ use std::ffi::c_void;
 
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, RECT, WPARAM}, Graphics::Gdi::{CreateCompatibleBitmap, CreateCompatibleDC, CreatePatternBrush, DeleteDC, DeleteObject, GetDC, HBRUSH, HGDIOBJ, ReleaseDC, SelectObject}, UI::{
-            Controls::{TAB_CONTROL_ITEM_STATE, TCIF_IMAGE, TCIF_TEXT, TCITEMW, TCM_INSERTITEMW, TCM_SETCURSEL, WC_TABCONTROLW},
+        Foundation::{HWND, LPARAM, RECT, WPARAM},
+        Graphics::Gdi::{
+            CreateCompatibleBitmap, CreateCompatibleDC, CreatePatternBrush, DeleteDC, DeleteObject,
+            GetDC, HBRUSH, HGDIOBJ, ReleaseDC, SelectObject,
+        },
+        UI::{
+            Controls::{
+                TAB_CONTROL_ITEM_STATE, TCIF_IMAGE, TCIF_TEXT, TCITEMW, TCM_INSERTITEMW,
+                TCM_SETCURSEL, WC_TABCONTROLW,
+            },
             Input::KeyboardAndMouse::EnableWindow,
             WindowsAndMessaging::{
-                CreateWindowExW, GetWindowRect, HMENU, PRF_CLIENT, PRF_ERASEBKGND, PRF_NONCLIENT, SHOW_WINDOW_CMD, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, ShowWindow, WINDOW_EX_STYLE, WM_PRINTCLIENT, WM_SETFONT, WS_CHILD, WS_VISIBLE
+                CreateWindowExW, GetWindowRect, HMENU, PRF_CLIENT, PRF_ERASEBKGND, PRF_NONCLIENT,
+                SHOW_WINDOW_CMD, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos,
+                ShowWindow, WINDOW_EX_STYLE, WM_PRINTCLIENT, WM_SETFONT, WS_CHILD, WS_VISIBLE,
             },
-        }
+        },
     },
     core::{HSTRING, PWSTR, w},
 };
 
 use crate::{
-    genarena::GenArenaKey, layout::{Coords, Layout, Position, Size}, tabs::{Tab, TabsState}, win32::font::Fonts
+    genarena::GenArenaKey,
+    layout::{Coords, Layout, Position, Size},
+    tabs::{Tab, TabsState},
+    win32::font::Fonts,
 };
 
 pub struct Tabs<T> {
@@ -22,7 +35,7 @@ pub struct Tabs<T> {
     _id: u16,
     current_state: TabsState,
     current_tab: u32,
-    brush: Option<HBRUSH>,  // TODO: invalidate brush when resizing
+    brush: Option<HBRUSH>, // TODO: invalidate brush when resizing
     state_hook: Option<fn(&T, &mut TabsState)>,
     outer_layout_node: GenArenaKey,
     inner_layout_node: GenArenaKey,
@@ -61,8 +74,7 @@ impl<T> Tabs<T> {
                 WINDOW_EX_STYLE::default(),
                 WC_TABCONTROLW,
                 w!(""),
-                WS_VISIBLE
-                    | WS_CHILD,
+                WS_VISIBLE | WS_CHILD,
                 0,
                 0,
                 width as i32,
@@ -74,8 +86,11 @@ impl<T> Tabs<T> {
             )
             .unwrap();
 
-            let outer_layout_node =
-                layout.add_node(layout_parent, crate::layout::LayoutNodeType::Container, position);
+            let outer_layout_node = layout.add_node(
+                layout_parent,
+                crate::layout::LayoutNodeType::Container,
+                position,
+            );
 
             //let tab_labels = Vec::new();
             for (i, tab) in tabs.iter().enumerate() {
@@ -91,18 +106,23 @@ impl<T> Tabs<T> {
                     lParam: LPARAM::default(),
                 };
 
-                SendMessageW(hwnd, TCM_INSERTITEMW, Some(WPARAM(i)), Some(LPARAM(&raw mut item as isize)));
+                SendMessageW(
+                    hwnd,
+                    TCM_INSERTITEMW,
+                    Some(WPARAM(i)),
+                    Some(LPARAM(&raw mut item as isize)),
+                );
             }
 
             let inner_layout_node = layout.add_node(
-                outer_layout_node, 
-                crate::layout::LayoutNodeType::MultiContainer, 
-                Position { 
-                    w: crate::layout::Size::Fill, 
-                    h: crate::layout::Size::Fill, 
-                    x: crate::layout::HorizontalOffset::AlignLeft(0), 
-                    y: crate::layout::VerticalOffset::AlignTop(24), 
-                    h_padding: 0, 
+                outer_layout_node,
+                crate::layout::LayoutNodeType::MultiContainer,
+                Position {
+                    w: crate::layout::Size::Fill,
+                    h: crate::layout::Size::Fill,
+                    x: crate::layout::HorizontalOffset::AlignLeft(0),
+                    y: crate::layout::VerticalOffset::AlignTop(24),
+                    h_padding: 0,
                     v_padding: 0,
                 },
             );
@@ -161,19 +181,21 @@ impl<T> Tabs<T> {
                 unsafe {
                     let _ = GetWindowRect(self.hwnd, &mut rc);
                     let hdc = GetDC(Some(self.hwnd));
-                    let hdc_new = CreateCompatibleDC(Some(hdc));    // create a new device context to draw our tab into
+                    let hdc_new = CreateCompatibleDC(Some(hdc)); // create a new device context to draw our tab into
                     let hbmp = CreateCompatibleBitmap(hdc, rc.right - rc.left, rc.bottom - rc.top); // create a new bitmap to draw the tab into
-                    let hbmp_old = SelectObject(hdc_new, HGDIOBJ(hbmp.0));  // replace the device context's bitmap with our new bitmap
+                    let hbmp_old = SelectObject(hdc_new, HGDIOBJ(hbmp.0)); // replace the device context's bitmap with our new bitmap
 
                     // draw the tab into our bitmap
                     SendMessageW(
-                        self.hwnd, 
-                        WM_PRINTCLIENT, 
-                        Some(WPARAM(hdc_new.0 as usize)), 
-                        Some(LPARAM((PRF_ERASEBKGND | PRF_CLIENT | PRF_NONCLIENT) as isize))
+                        self.hwnd,
+                        WM_PRINTCLIENT,
+                        Some(WPARAM(hdc_new.0 as usize)),
+                        Some(LPARAM(
+                            (PRF_ERASEBKGND | PRF_CLIENT | PRF_NONCLIENT) as isize,
+                        )),
                     );
-                    let brush = CreatePatternBrush(hbmp);   // create a brush from the bitmap
-                    SelectObject(hdc_new, hbmp_old);    // replace the bitmap in the device context
+                    let brush = CreatePatternBrush(hbmp); // create a brush from the bitmap
+                    SelectObject(hdc_new, hbmp_old); // replace the bitmap in the device context
 
                     let _ = DeleteObject(HGDIOBJ(hbmp.0));
                     let _ = DeleteDC(hdc_new);
@@ -184,6 +206,16 @@ impl<T> Tabs<T> {
                 }
             }
         }
+    }
+
+    fn delete_brush(&mut self) {
+        if let Some(brush) = self.brush {
+            unsafe {
+                let _ = DeleteObject(HGDIOBJ(brush.0));
+            }
+        }
+
+        self.brush = None;
     }
 
     pub fn hide(&self, hidden: bool) {
@@ -236,6 +268,8 @@ impl<T> Tabs<T> {
                         SWP_NOZORDER | SWP_NOACTIVATE,
                     );
                 }
+
+                self.delete_brush();
             }
         }
 

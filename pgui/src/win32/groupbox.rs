@@ -7,7 +7,9 @@ use windows::{
             Controls::WC_BUTTONW,
             Input::KeyboardAndMouse::EnableWindow,
             WindowsAndMessaging::{
-                BS_GROUPBOX, CreateWindowExW, HMENU, SHOW_WINDOW_CMD, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE
+                BS_GROUPBOX, CreateWindowExW, HMENU, SHOW_WINDOW_CMD, SWP_NOACTIVATE, SWP_NOZORDER,
+                SendMessageW, SetWindowPos, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE,
+                WINDOW_STYLE, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE,
             },
         },
     },
@@ -15,8 +17,8 @@ use windows::{
 };
 
 use crate::{
-    groupbox::GroupboxState,
     genarena::GenArenaKey,
+    groupbox::GroupboxState,
     layout::{Coords, Layout, Position, Size},
     win32::font::Fonts,
 };
@@ -68,10 +70,7 @@ impl<T> Groupbox<T> {
                 WINDOW_EX_STYLE::default(),
                 WC_BUTTONW,
                 &label,
-                WS_TABSTOP
-                    | WS_VISIBLE
-                    | WS_CHILD
-                    | WINDOW_STYLE(BS_GROUPBOX as u32),
+                WS_TABSTOP | WS_VISIBLE | WS_CHILD | WINDOW_STYLE(BS_GROUPBOX as u32),
                 0,
                 0,
                 width as i32,
@@ -83,18 +82,21 @@ impl<T> Groupbox<T> {
             )
             .unwrap();
 
-            let outer_layout_node =
-                layout.add_node(layout_parent, crate::layout::LayoutNodeType::Container, position);
+            let outer_layout_node = layout.add_node(
+                layout_parent,
+                crate::layout::LayoutNodeType::Container,
+                position,
+            );
 
             let inner_layout_node = layout.add_node(
-                outer_layout_node, 
-                crate::layout::LayoutNodeType::Container, 
-                Position { 
-                    w: crate::layout::Size::Fill, 
-                    h: crate::layout::Size::Fill, 
-                    x: crate::layout::HorizontalOffset::AlignLeft(0), 
-                    y: crate::layout::VerticalOffset::AlignTop(0), 
-                    h_padding: 16, 
+                outer_layout_node,
+                crate::layout::LayoutNodeType::Container,
+                Position {
+                    w: crate::layout::Size::Fill,
+                    h: crate::layout::Size::Fill,
+                    x: crate::layout::HorizontalOffset::AlignLeft(0),
+                    y: crate::layout::VerticalOffset::AlignTop(0),
+                    h_padding: 16,
                     v_padding: 16,
                 },
             );

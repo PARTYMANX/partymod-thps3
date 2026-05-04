@@ -8,7 +8,9 @@ use windows::{
             Controls::{BST_CHECKED, BST_UNCHECKED, WC_BUTTONW},
             Input::KeyboardAndMouse::EnableWindow,
             WindowsAndMessaging::{
-                BM_SETCHECK, BS_CHECKBOX, CreateWindowExW, HMENU, SHOW_WINDOW_CMD, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE
+                BM_SETCHECK, BS_CHECKBOX, CreateWindowExW, HMENU, SHOW_WINDOW_CMD, SWP_NOACTIVATE,
+                SWP_NOZORDER, SendMessageW, SetWindowPos, SetWindowTextW, ShowWindow,
+                WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE,
             },
         },
     },
@@ -70,10 +72,7 @@ impl<T> Checkbox<T> {
                 WINDOW_EX_STYLE::default(),
                 WC_BUTTONW,
                 &label,
-                WS_TABSTOP
-                    | WS_VISIBLE
-                    | WS_CHILD
-                    | WINDOW_STYLE(BS_CHECKBOX as u32),
+                WS_TABSTOP | WS_VISIBLE | WS_CHILD | WINDOW_STYLE(BS_CHECKBOX as u32),
                 0,
                 0,
                 width as i32,
@@ -233,9 +232,19 @@ impl<T> Checkbox<T> {
             self.current_state.checked = !self.current_state.checked;
 
             if self.current_state.checked {
-                SendMessageW(self.hwnd, BM_SETCHECK, Some(WPARAM(BST_CHECKED.0 as usize)), None);
+                SendMessageW(
+                    self.hwnd,
+                    BM_SETCHECK,
+                    Some(WPARAM(BST_CHECKED.0 as usize)),
+                    None,
+                );
             } else {
-                SendMessageW(self.hwnd, BM_SETCHECK, Some(WPARAM(BST_UNCHECKED.0 as usize)), None);
+                SendMessageW(
+                    self.hwnd,
+                    BM_SETCHECK,
+                    Some(WPARAM(BST_UNCHECKED.0 as usize)),
+                    None,
+                );
             }
         }
 
@@ -262,9 +271,19 @@ impl<T> Checkbox<T> {
                     let _ = SetWindowTextW(self.hwnd, &self.label);
 
                     if self.current_state.checked {
-                        SendMessageW(self.hwnd, BM_SETCHECK, Some(WPARAM(BST_CHECKED.0 as usize)), None);
+                        SendMessageW(
+                            self.hwnd,
+                            BM_SETCHECK,
+                            Some(WPARAM(BST_CHECKED.0 as usize)),
+                            None,
+                        );
                     } else {
-                        SendMessageW(self.hwnd, BM_SETCHECK, Some(WPARAM(BST_UNCHECKED.0 as usize)), None);
+                        SendMessageW(
+                            self.hwnd,
+                            BM_SETCHECK,
+                            Some(WPARAM(BST_UNCHECKED.0 as usize)),
+                            None,
+                        );
                     }
                 }
 

@@ -4,25 +4,46 @@ use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
         Graphics::Gdi::{
-            BeginPaint, COLOR_WINDOW, EndPaint, FillRect, HBRUSH, HDC, InvalidateRect, MapWindowPoints, PAINTSTRUCT, SetBkMode, SetBrushOrgEx, TRANSPARENT
+            BeginPaint, COLOR_WINDOW, EndPaint, FillRect, HBRUSH, HDC, InvalidateRect,
+            MapWindowPoints, PAINTSTRUCT, SetBkMode, SetBrushOrgEx, TRANSPARENT,
         },
         UI::{
-            Controls::{NMHDR, TCM_GETCURSEL, TCN_SELCHANGE, WM_CTLCOLOR}, HiDpi::GetDpiForWindow, WindowsAndMessaging::{
-                CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, GetClientRect, GetWindowRect, MoveWindow, PostQuitMessage, SendMessageW, WINDOW_EX_STYLE, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_NOTIFY, WM_PAINT, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE
-            }
+            Controls::{NMHDR, TCM_GETCURSEL, TCN_SELCHANGE, WM_CTLCOLOR},
+            HiDpi::GetDpiForWindow,
+            WindowsAndMessaging::{
+                CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, EN_CHANGE, EN_KILLFOCUS,
+                EN_SETFOCUS, GetClientRect, GetWindowRect, MoveWindow, PostQuitMessage,
+                SendMessageW, WINDOW_EX_STYLE, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC,
+                WM_DESTROY, WM_DPICHANGED, WM_NOTIFY, WM_PAINT, WS_CAPTION, WS_MINIMIZEBOX,
+                WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE,
+            },
         },
     },
     core::{HSTRING, PCWSTR},
 };
 
 use crate::{
-    button::ButtonState, checkbox::CheckboxState, genarena::{GenArena, GenArenaKey}, groupbox::GroupboxState, layout::Layout, tabs::TabsState, text::TextState, win32::{button::Button, checkbox::Checkbox, font::Fonts, groupbox::Groupbox, tabs::Tabs, text::Text}
+    button::ButtonState,
+    checkbox::CheckboxState,
+    dropdown::DropdownState,
+    genarena::{GenArena, GenArenaKey},
+    groupbox::GroupboxState,
+    layout::Layout,
+    tabs::TabsState,
+    text::TextState,
+    textbox::TextboxState,
+    win32::{
+        button::Button, checkbox::Checkbox, dropdown::Dropdown, font::Fonts, groupbox::Groupbox,
+        tabs::Tabs, text::Text, textbox::Textbox,
+    },
 };
 
 pub enum Component<T> {
     Button(Button<T>),
     Checkbox(Checkbox<T>),
     Text(Text<T>),
+    Dropdown(Dropdown<T>),
+    Textbox(Textbox<T>),
     Groupbox(Groupbox<T>),
     Tabs(Tabs<T>),
 }
@@ -124,6 +145,8 @@ impl<T> Window<T> {
                 Component::Button(button) => button.update(&mut layout, &fonts, 1.0),
                 Component::Checkbox(checkbox) => checkbox.update(&mut layout, &fonts, 1.0),
                 Component::Text(text) => text.update(&mut layout, &fonts, 1.0),
+                Component::Dropdown(dropdown) => dropdown.update(&mut layout, &fonts, 1.0),
+                Component::Textbox(textbox) => textbox.update(&mut layout, &fonts, 1.0),
                 Component::Groupbox(groupbox) => groupbox.update(&mut layout, &fonts, 1.0),
                 Component::Tabs(tabs) => tabs.update(&mut layout, &fonts, 1.0),
             }
@@ -195,8 +218,14 @@ impl<T> Window<T> {
                     let p = component_tree.get_mut(parent_key).unwrap();
 
                     match &mut p.ty {
-                        ComponentTreeNodeType::Node { parent: _,  children } => children.push(component_node),
-                        ComponentTreeNodeType::Tabs { _parent: _,  children: _ } => unreachable!(),
+                        ComponentTreeNodeType::Node {
+                            parent: _,
+                            children,
+                        } => children.push(component_node),
+                        ComponentTreeNodeType::Tabs {
+                            _parent: _,
+                            children: _,
+                        } => unreachable!(),
                         ComponentTreeNodeType::Leaf { parent: _ } => unreachable!(),
                     }
                 }
@@ -236,8 +265,14 @@ impl<T> Window<T> {
                     let p = component_tree.get_mut(parent_key).unwrap();
 
                     match &mut p.ty {
-                        ComponentTreeNodeType::Node { parent: _,  children } => children.push(component_node),
-                        ComponentTreeNodeType::Tabs { _parent: _,  children: _ } => unreachable!(),
+                        ComponentTreeNodeType::Node {
+                            parent: _,
+                            children,
+                        } => children.push(component_node),
+                        ComponentTreeNodeType::Tabs {
+                            _parent: _,
+                            children: _,
+                        } => unreachable!(),
                         ComponentTreeNodeType::Leaf { parent: _ } => unreachable!(),
                     }
                 }
@@ -275,13 +310,114 @@ impl<T> Window<T> {
                     let p = component_tree.get_mut(parent_key).unwrap();
 
                     match &mut p.ty {
-                        ComponentTreeNodeType::Node { parent: _,  children } => children.push(component_node),
-                        ComponentTreeNodeType::Tabs { _parent: _,  children: _ } => unreachable!(),
+                        ComponentTreeNodeType::Node {
+                            parent: _,
+                            children,
+                        } => children.push(component_node),
+                        ComponentTreeNodeType::Tabs {
+                            _parent: _,
+                            children: _,
+                        } => unreachable!(),
                         ComponentTreeNodeType::Leaf { parent: _ } => unreachable!(),
                     }
                 }
 
                 native_components.push(text);
+                component_nodes.push(component_node);
+            }
+            crate::component::Component::Dropdown(dropdown) => {
+                let initial_state = DropdownState {
+                    options: dropdown.options,
+                    selected: 0,
+                    enabled: dropdown.enabled,
+                    position: dropdown.position,
+                };
+
+                let id = (native_components.len() + 1) as u16;
+
+                let dropdown = Component::Dropdown(Dropdown::new(
+                    window,
+                    id,
+                    initial_state,
+                    dropdown.on_select,
+                    dropdown.state_hook,
+                    layout_parent,
+                    layout,
+                    fonts,
+                ));
+
+                let component_node = component_tree.push(ComponentTreeNode {
+                    component_id: Some(id as usize),
+                    ty: ComponentTreeNodeType::Leaf {
+                        parent: component_parent,
+                    },
+                });
+
+                if let Some(parent_key) = component_parent {
+                    let p = component_tree.get_mut(parent_key).unwrap();
+
+                    match &mut p.ty {
+                        ComponentTreeNodeType::Node {
+                            parent: _,
+                            children,
+                        } => children.push(component_node),
+                        ComponentTreeNodeType::Tabs {
+                            _parent: _,
+                            children: _,
+                        } => unreachable!(),
+                        ComponentTreeNodeType::Leaf { parent: _ } => unreachable!(),
+                    }
+                }
+
+                native_components.push(dropdown);
+                component_nodes.push(component_node);
+            }
+            crate::component::Component::Textbox(textbox) => {
+                let initial_state = TextboxState {
+                    text: textbox.initial,
+                    enabled: textbox.enabled,
+                    position: textbox.position,
+                };
+
+                let id = (native_components.len() + 1) as u16;
+
+                let textbox = Component::Textbox(Textbox::new(
+                    window,
+                    id,
+                    initial_state,
+                    textbox.on_focus,
+                    textbox.on_unfocus,
+                    textbox.on_change,
+                    textbox.state_hook,
+                    layout_parent,
+                    layout,
+                    fonts,
+                ));
+
+                let component_node = component_tree.push(ComponentTreeNode {
+                    component_id: Some(id as usize),
+                    ty: ComponentTreeNodeType::Leaf {
+                        parent: component_parent,
+                    },
+                });
+
+                if let Some(parent_key) = component_parent {
+                    let p = component_tree.get_mut(parent_key).unwrap();
+
+                    match &mut p.ty {
+                        ComponentTreeNodeType::Node {
+                            parent: _,
+                            children,
+                        } => children.push(component_node),
+                        ComponentTreeNodeType::Tabs {
+                            _parent: _,
+                            children: _,
+                        } => unreachable!(),
+                        ComponentTreeNodeType::Leaf { parent: _ } => unreachable!(),
+                    }
+                }
+
+                native_components.push(textbox);
                 component_nodes.push(component_node);
             }
             crate::component::Component::Groupbox(groupbox) => {
@@ -309,7 +445,7 @@ impl<T> Window<T> {
                     component_id: Some(id as usize),
                     ty: ComponentTreeNodeType::Node {
                         parent: component_parent,
-                        children: Vec::new()
+                        children: Vec::new(),
                     },
                 });
 
@@ -317,8 +453,14 @@ impl<T> Window<T> {
                     let p = component_tree.get_mut(parent_key).unwrap();
 
                     match &mut p.ty {
-                        ComponentTreeNodeType::Node { parent: _,  children } => children.push(component_node),
-                        ComponentTreeNodeType::Tabs { _parent: _,  children: _ } => unreachable!(),
+                        ComponentTreeNodeType::Node {
+                            parent: _,
+                            children,
+                        } => children.push(component_node),
+                        ComponentTreeNodeType::Tabs {
+                            _parent: _,
+                            children: _,
+                        } => unreachable!(),
                         ComponentTreeNodeType::Leaf { parent: _ } => unreachable!(),
                     }
                 }
@@ -367,7 +509,7 @@ impl<T> Window<T> {
                     component_id: Some(id as usize),
                     ty: ComponentTreeNodeType::Tabs {
                         _parent: component_parent,
-                        children: Vec::new()
+                        children: Vec::new(),
                     },
                 });
 
@@ -379,15 +521,21 @@ impl<T> Window<T> {
                         component_id: None,
                         ty: ComponentTreeNodeType::Node {
                             parent: Some(component_node),
-                            children: Vec::new()
+                            children: Vec::new(),
                         },
                     });
 
                     let tab_parent = component_tree.get_mut(component_node).unwrap();
 
                     match &mut tab_parent.ty {
-                        ComponentTreeNodeType::Node { parent: _,  children: _ } => unreachable!(),
-                        ComponentTreeNodeType::Tabs { _parent: _,  children } => children.push(vec![tab_component_node]),
+                        ComponentTreeNodeType::Node {
+                            parent: _,
+                            children: _,
+                        } => unreachable!(),
+                        ComponentTreeNodeType::Tabs {
+                            _parent: _,
+                            children,
+                        } => children.push(vec![tab_component_node]),
                         ComponentTreeNodeType::Leaf { parent: _ } => unreachable!(),
                     }
 
@@ -406,14 +554,25 @@ impl<T> Window<T> {
 
                 let tab_node = component_tree.get(component_node).unwrap();
                 match &tab_node.ty {
-                    ComponentTreeNodeType::Node { parent: _,  children: _ } => unreachable!(),
-                    ComponentTreeNodeType::Tabs { _parent: _,  children } => {
+                    ComponentTreeNodeType::Node {
+                        parent: _,
+                        children: _,
+                    } => unreachable!(),
+                    ComponentTreeNodeType::Tabs {
+                        _parent: _,
+                        children,
+                    } => {
                         for tab_idx in 1..children.len() {
                             for child in &children[tab_idx] {
-                                Self::hide_children(native_components, component_tree, *child, true);
+                                Self::hide_children(
+                                    native_components,
+                                    component_tree,
+                                    *child,
+                                    true,
+                                );
                             }
                         }
-                    },
+                    }
                     ComponentTreeNodeType::Leaf { parent: _ } => unreachable!(),
                 }
             }
@@ -428,7 +587,7 @@ impl<T> Window<T> {
                     component_id: None,
                     ty: ComponentTreeNodeType::Node {
                         parent: component_parent,
-                        children: Vec::new()
+                        children: Vec::new(),
                     },
                 });
 
@@ -436,8 +595,14 @@ impl<T> Window<T> {
                     let p = component_tree.get_mut(parent_key).unwrap();
 
                     match &mut p.ty {
-                        ComponentTreeNodeType::Node { parent: _,  children } => children.push(component_node),
-                        ComponentTreeNodeType::Tabs { _parent: _,  children: _ } => unreachable!(),
+                        ComponentTreeNodeType::Node {
+                            parent: _,
+                            children,
+                        } => children.push(component_node),
+                        ComponentTreeNodeType::Tabs {
+                            _parent: _,
+                            children: _,
+                        } => unreachable!(),
                         ComponentTreeNodeType::Leaf { parent: _ } => unreachable!(),
                     }
                 }
@@ -467,7 +632,7 @@ impl<T> Window<T> {
                     component_id: None,
                     ty: ComponentTreeNodeType::Node {
                         parent: component_parent,
-                        children: Vec::new()
+                        children: Vec::new(),
                     },
                 });
 
@@ -475,19 +640,25 @@ impl<T> Window<T> {
                     let p = component_tree.get_mut(parent_key).unwrap();
 
                     match &mut p.ty {
-                        ComponentTreeNodeType::Node { parent: _,  children } => children.push(component_node),
-                        ComponentTreeNodeType::Tabs { _parent: _,  children: _ } => unreachable!(),
+                        ComponentTreeNodeType::Node {
+                            parent: _,
+                            children,
+                        } => children.push(component_node),
+                        ComponentTreeNodeType::Tabs {
+                            _parent: _,
+                            children: _,
+                        } => unreachable!(),
                         ComponentTreeNodeType::Leaf { parent: _ } => unreachable!(),
                     }
                 }
 
                 for child in horizontal.children {
                     Self::create_components(
-                        window, 
-                        child, 
-                        native_components, 
-                        layout, 
-                        node, 
+                        window,
+                        child,
+                        native_components,
+                        layout,
+                        node,
                         component_tree,
                         Some(component_node),
                         component_nodes,
@@ -508,7 +679,7 @@ impl<T> Window<T> {
                     component_id: None,
                     ty: ComponentTreeNodeType::Node {
                         parent: component_parent,
-                        children: Vec::new()
+                        children: Vec::new(),
                     },
                 });
 
@@ -516,19 +687,25 @@ impl<T> Window<T> {
                     let p = component_tree.get_mut(parent_key).unwrap();
 
                     match &mut p.ty {
-                        ComponentTreeNodeType::Node { parent: _,  children } => children.push(component_node),
-                        ComponentTreeNodeType::Tabs { _parent: _,  children: _ } => unreachable!(),
+                        ComponentTreeNodeType::Node {
+                            parent: _,
+                            children,
+                        } => children.push(component_node),
+                        ComponentTreeNodeType::Tabs {
+                            _parent: _,
+                            children: _,
+                        } => unreachable!(),
                         ComponentTreeNodeType::Leaf { parent: _ } => unreachable!(),
                     }
                 }
 
                 for child in vertical.children {
                     Self::create_components(
-                        window, 
-                        child, 
-                        native_components, 
-                        layout, 
-                        node, 
+                        window,
+                        child,
+                        native_components,
+                        layout,
+                        node,
                         component_tree,
                         Some(component_node),
                         component_nodes,
@@ -543,35 +720,43 @@ impl<T> Window<T> {
         native_components: &Vec<Component<T>>,
         component_tree: &GenArena<ComponentTreeNode>,
         node_key: GenArenaKey,
-        hidden: bool
+        hidden: bool,
     ) {
         let node = component_tree.get(node_key).unwrap();
-        
+
         if let Some(id) = node.component_id {
             match &native_components[id - 1] {
                 Component::Button(button) => button.hide(hidden),
                 Component::Checkbox(checkbox) => checkbox.hide(hidden),
                 Component::Text(text) => text.hide(hidden),
+                Component::Dropdown(dropdown) => dropdown.hide(hidden),
+                Component::Textbox(textbox) => textbox.hide(hidden),
                 Component::Groupbox(groupbox) => groupbox.hide(hidden),
                 Component::Tabs(tabs) => tabs.hide(hidden),
             }
         }
-        
+
         match &node.ty {
-            ComponentTreeNodeType::Leaf { parent: _ } => {},
-            ComponentTreeNodeType::Node { parent: _,  children } => {
+            ComponentTreeNodeType::Leaf { parent: _ } => {}
+            ComponentTreeNodeType::Node {
+                parent: _,
+                children,
+            } => {
                 for child in children {
                     Self::hide_children(native_components, component_tree, *child, hidden);
                 }
-            },
-            ComponentTreeNodeType::Tabs { _parent: _,  children } => {
+            }
+            ComponentTreeNodeType::Tabs {
+                _parent: _,
+                children,
+            } => {
                 // FIXME: when unhiding child tabs, this will unhide all elements
                 for tab in children {
                     for child in tab {
                         Self::hide_children(native_components, component_tree, *child, hidden);
                     }
                 }
-            },
+            }
         }
     }
 
@@ -621,15 +806,17 @@ impl<T> Window<T> {
                 Component::Checkbox(checkbox) => {
                     checkbox.update(&mut self.layout, &self.fonts, self.scale)
                 }
-                Component::Text(text) => {
-                    text.update(&mut self.layout, &self.fonts, self.scale)
+                Component::Text(text) => text.update(&mut self.layout, &self.fonts, self.scale),
+                Component::Dropdown(dropdown) => {
+                    dropdown.update(&mut self.layout, &self.fonts, self.scale)
+                }
+                Component::Textbox(textbox) => {
+                    textbox.update(&mut self.layout, &self.fonts, self.scale)
                 }
                 Component::Groupbox(groupbox) => {
                     groupbox.update(&mut self.layout, &self.fonts, self.scale)
                 }
-                Component::Tabs(tabs) => {
-                    tabs.update(&mut self.layout, &self.fonts, self.scale)
-                }
+                Component::Tabs(tabs) => tabs.update(&mut self.layout, &self.fonts, self.scale),
             }
         }
 
@@ -650,15 +837,17 @@ impl<T> Window<T> {
                 Component::Checkbox(checkbox) => {
                     checkbox.do_state_hook(state, &mut self.layout, &self.fonts)
                 }
-                Component::Text(text) => {
-                    text.do_state_hook(state, &mut self.layout, &self.fonts)
+                Component::Text(text) => text.do_state_hook(state, &mut self.layout, &self.fonts),
+                Component::Dropdown(dropdown) => {
+                    dropdown.do_state_hook(state, &mut self.layout, &self.fonts)
+                }
+                Component::Textbox(textbox) => {
+                    textbox.do_state_hook(state, &mut self.layout, &self.fonts)
                 }
                 Component::Groupbox(groupbox) => {
                     groupbox.do_state_hook(state, &mut self.layout, &self.fonts)
                 }
-                Component::Tabs(tabs) => {
-                    tabs.do_state_hook(state, &mut self.layout, &self.fonts)
-                }
+                Component::Tabs(tabs) => tabs.do_state_hook(state, &mut self.layout, &self.fonts),
             }
         }
 
@@ -673,15 +862,17 @@ impl<T> Window<T> {
                     Component::Checkbox(checkbox) => {
                         checkbox.update(&mut self.layout, &self.fonts, self.scale)
                     }
-                    Component::Text(text) => {
-                        text.update(&mut self.layout, &self.fonts, self.scale)
+                    Component::Text(text) => text.update(&mut self.layout, &self.fonts, self.scale),
+                    Component::Dropdown(dropdown) => {
+                        dropdown.update(&mut self.layout, &self.fonts, self.scale)
+                    }
+                    Component::Textbox(textbox) => {
+                        textbox.update(&mut self.layout, &self.fonts, self.scale)
                     }
                     Component::Groupbox(groupbox) => {
                         groupbox.update(&mut self.layout, &self.fonts, self.scale)
                     }
-                    Component::Tabs(tabs) => {
-                        tabs.update(&mut self.layout, &self.fonts, self.scale)
-                    }
+                    Component::Tabs(tabs) => tabs.update(&mut self.layout, &self.fonts, self.scale),
                 }
             }
         }
@@ -726,9 +917,7 @@ impl<T> Window<T> {
 
                     LRESULT(0)
                 }
-                WM_CTLCOLOR |
-                WM_CTLCOLORBTN |
-                WM_CTLCOLORSTATIC => {
+                WM_CTLCOLOR | WM_CTLCOLORBTN | WM_CTLCOLORSTATIC => {
                     // get parent tab brush so this control draws correctly
 
                     let mut result = None;
@@ -741,6 +930,8 @@ impl<T> Window<T> {
                             Component::Button(button) => button.compare_hwnd(target_hwnd),
                             Component::Checkbox(checkbox) => checkbox.compare_hwnd(target_hwnd),
                             Component::Text(text) => text.compare_hwnd(target_hwnd),
+                            Component::Dropdown(dropdown) => dropdown.compare_hwnd(target_hwnd),
+                            Component::Textbox(textbox) => textbox.compare_hwnd(target_hwnd),
                             Component::Groupbox(groupbox) => groupbox.compare_hwnd(target_hwnd),
                             Component::Tabs(tabs) => tabs.compare_hwnd(target_hwnd),
                         };
@@ -754,39 +945,41 @@ impl<T> Window<T> {
                         // walk up the tree to find parent tab to retrieve our brush
 
                         let mut tab_result = None;
-                        let mut current_component = self.component_tree.get(self.component_nodes[component_id - 1]).unwrap();
+                        let mut current_component = self
+                            .component_tree
+                            .get(self.component_nodes[component_id - 1])
+                            .unwrap();
                         loop {
                             match current_component.ty {
-                                ComponentTreeNodeType::Leaf { parent } => {
-                                    match parent {
-                                        Some(p) => {
-                                            current_component = self.component_tree.get(p).unwrap();
-                                        }
-                                        None => break,
+                                ComponentTreeNodeType::Leaf { parent } => match parent {
+                                    Some(p) => {
+                                        current_component = self.component_tree.get(p).unwrap();
                                     }
+                                    None => break,
                                 },
-                                ComponentTreeNodeType::Node { parent, children: _ } => {
-                                    match parent {
-                                        Some(p) => {
-                                            current_component = self.component_tree.get(p).unwrap();
-                                        }
-                                        None => break,
+                                ComponentTreeNodeType::Node {
+                                    parent,
+                                    children: _,
+                                } => match parent {
+                                    Some(p) => {
+                                        current_component = self.component_tree.get(p).unwrap();
                                     }
+                                    None => break,
                                 },
-                                ComponentTreeNodeType::Tabs { _parent: _, children: _ } => {
+                                ComponentTreeNodeType::Tabs {
+                                    _parent: _,
+                                    children: _,
+                                } => {
                                     tab_result = current_component.component_id;
                                     break;
-                                },
+                                }
                             }
                         }
 
                         if let Some(tab_id) = tab_result {
                             let tabs = match &mut self.components[tab_id - 1] {
-                                Component::Button(_) => panic!(),
-                                Component::Checkbox(_) => panic!(),
-                                Component::Text(_) => panic!(),
-                                Component::Groupbox(_) => panic!(),
                                 Component::Tabs(tabs) => tabs,
+                                _ => panic!(),
                             };
 
                             // get brush (or create if needed)
@@ -822,6 +1015,7 @@ impl<T> Window<T> {
                 }
                 WM_COMMAND => {
                     let id = (wparam.0 & 0xffff) as u16;
+                    let code = ((wparam.0 >> 16) & 0xffff) as u16;
 
                     let mut result = None;
 
@@ -835,9 +1029,29 @@ impl<T> Window<T> {
                                 result =
                                     checkbox.wndproc_on_toggled(state, window, msg, wparam, lparam)
                             }
-                            Component::Text(_) |
-                            Component::Groupbox(_) |
-                            Component::Tabs(_) => {}
+                            Component::Dropdown(dropdown) => match code {
+                                1 => {
+                                    result = dropdown
+                                        .wndproc_on_selected(state, window, msg, wparam, lparam)
+                                }
+                                _ => {}
+                            },
+                            Component::Textbox(textbox) => match code as u32 {
+                                EN_SETFOCUS => {
+                                    result = textbox
+                                        .wndproc_on_focused(state, window, msg, wparam, lparam)
+                                }
+                                EN_KILLFOCUS => {
+                                    result = textbox
+                                        .wndproc_on_unfocused(state, window, msg, wparam, lparam)
+                                }
+                                EN_CHANGE => {
+                                    result = textbox
+                                        .wndproc_on_changed(state, window, msg, wparam, lparam)
+                                }
+                                _ => {}
+                            },
+                            Component::Text(_) | Component::Groupbox(_) | Component::Tabs(_) => {}
                         }
                     }
 
@@ -866,8 +1080,9 @@ impl<T> Window<T> {
                             Component::Tabs(tabs) => {
                                 if code == TCN_SELCHANGE {
                                     let old_tab = tabs.get_current_tab();
-                                
-                                    let new_tab = SendMessageW(hwnd, TCM_GETCURSEL, None, None).0 as u32;
+
+                                    let new_tab =
+                                        SendMessageW(hwnd, TCM_GETCURSEL, None, None).0 as u32;
 
                                     tabs.set_current_tab(new_tab);
 
@@ -876,35 +1091,38 @@ impl<T> Window<T> {
 
                                     match &tab_component.ty {
                                         ComponentTreeNodeType::Leaf { parent: _ } => unreachable!(),
-                                        ComponentTreeNodeType::Node { parent: _, children: _ } => unreachable!(),
-                                        ComponentTreeNodeType::Tabs { _parent: _, children } => {
+                                        ComponentTreeNodeType::Node {
+                                            parent: _,
+                                            children: _,
+                                        } => unreachable!(),
+                                        ComponentTreeNodeType::Tabs {
+                                            _parent: _,
+                                            children,
+                                        } => {
                                             for child in &children[old_tab as usize] {
                                                 Self::hide_children(
-                                                    &self.components, 
-                                                    &self.component_tree, 
-                                                    *child, 
-                                                    true
+                                                    &self.components,
+                                                    &self.component_tree,
+                                                    *child,
+                                                    true,
                                                 );
                                             }
 
                                             for child in &children[new_tab as usize] {
                                                 Self::hide_children(
-                                                    &self.components, 
-                                                    &self.component_tree, 
-                                                    *child, 
-                                                    false
+                                                    &self.components,
+                                                    &self.component_tree,
+                                                    *child,
+                                                    false,
                                                 );
                                             }
-                                        },
+                                        }
                                     }
 
                                     result = Some(LRESULT(0));
                                 }
                             }
-                            Component::Button(_) |
-                            Component::Checkbox(_) |
-                            Component::Text(_) |
-                            Component::Groupbox(_) => {}
+                            _ => {}
                         }
                     }
 
@@ -942,5 +1160,5 @@ enum ComponentTreeNodeType {
     Tabs {
         _parent: Option<GenArenaKey>,
         children: Vec<Vec<GenArenaKey>>,
-    }
+    },
 }

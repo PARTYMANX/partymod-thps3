@@ -2,15 +2,15 @@ use std::ffi::c_void;
 
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, SIZE, WPARAM},
+        Foundation::{HWND, LPARAM, LRESULT, SIZE, WPARAM},
         Graphics::Gdi::{GetDC, GetTextExtentPoint32W, ReleaseDC, SelectObject},
         UI::{
-            Controls::WC_STATICW,
+            Controls::WC_EDITW,
             Input::KeyboardAndMouse::EnableWindow,
             WindowsAndMessaging::{
-                CreateWindowExW, HMENU, SHOW_WINDOW_CMD, SWP_NOACTIVATE, SWP_NOZORDER,
-                SendMessageW, SetWindowPos, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE,
-                WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE,
+                CreateWindowExW, GetWindowTextLengthW, GetWindowTextW, HMENU, SHOW_WINDOW_CMD,
+                SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, SetWindowTextW,
+                ShowWindow, WM_SETFONT, WS_CHILD, WS_EX_CLIENTEDGE, WS_TABSTOP, WS_VISIBLE,
             },
         },
     },
@@ -20,39 +20,41 @@ use windows::{
 use crate::{
     genarena::GenArenaKey,
     layout::{Coords, Layout, Position, Size},
-    text::TextState,
+    textbox::TextboxState,
     win32::font::Fonts,
 };
 
-pub struct Text<T> {
+pub struct Textbox<T> {
     hwnd: HWND,
     _id: u16,
-    text: HSTRING,
-    current_state: TextState,
-    state_hook: Option<fn(&T, &mut TextState)>,
+    current_state: TextboxState,
+    on_focused: Option<fn(&mut T, &String)>,
+    on_unfocused: Option<fn(&mut T, &String)>,
+    on_changed: Option<fn(&mut T, &String)>,
+    state_hook: Option<fn(&T, &mut TextboxState)>,
     layout_node: GenArenaKey,
     coords: Option<Coords>,
     current_scale: f32,
 }
 
-impl<T> Text<T> {
+impl<T> Textbox<T> {
     pub fn new(
         window: HWND,
         id: u16,
-        initial_state: TextState,
-        state_hook: Option<fn(&T, &mut TextState)>,
+        initial_state: TextboxState,
+        on_focused: Option<fn(&mut T, &String)>,
+        on_unfocused: Option<fn(&mut T, &String)>,
+        on_changed: Option<fn(&mut T, &String)>,
+        state_hook: Option<fn(&T, &mut TextboxState)>,
         layout_parent: GenArenaKey,
         layout: &mut Layout,
         fonts: &Fonts,
     ) -> Self {
-        let text = HSTRING::from(initial_state.text.clone());
-        //let utf16_label = label.encode_utf16().collect();
-
-        //PCWSTR::from(utf16_label);
+        let initial_text = HSTRING::from(initial_state.text.clone());
 
         let (hwnd, layout_node) = unsafe {
             // get size of label (this could probably be moved elsewhere since i assume it'll get reused)
-            let position = Self::calc_position(initial_state.position, &text, fonts);
+            let position = Self::calc_position(initial_state.position, &initial_text, fonts);
 
             let width = match position.w {
                 Size::Fill => 0,
@@ -67,9 +69,9 @@ impl<T> Text<T> {
             };
 
             let hwnd = CreateWindowExW(
-                WINDOW_EX_STYLE::default(),
-                WC_STATICW,
-                &text,
+                WS_EX_CLIENTEDGE,
+                WC_EDITW,
+                &initial_text,
                 WS_TABSTOP | WS_VISIBLE | WS_CHILD,
                 0,
                 0,
@@ -101,8 +103,10 @@ impl<T> Text<T> {
         Self {
             hwnd,
             _id: id,
-            text,
             current_state: initial_state,
+            on_focused,
+            on_unfocused,
+            on_changed,
             state_hook,
             layout_node,
             coords: None,
@@ -110,27 +114,27 @@ impl<T> Text<T> {
         }
     }
 
-    fn calc_position(initial_position: Position, label: &HSTRING, fonts: &Fonts) -> Position {
+    fn calc_position(initial_position: Position, placeholder: &HSTRING, fonts: &Fonts) -> Position {
         // get size of label (this could probably be moved elsewhere since i assume it'll get reused)
         let text_size = unsafe {
             let hdc = GetDC(None);
             let _ = SelectObject(hdc, fonts.default_font.into());
             let mut text_size = SIZE::default();
-            let _ = GetTextExtentPoint32W(hdc, &label, &mut text_size);
+            let _ = GetTextExtentPoint32W(hdc, &placeholder, &mut text_size);
             ReleaseDC(None, hdc);
 
             text_size
         };
 
         let width = match initial_position.w {
-            Size::Fill => text_size.cx as u32,
-            Size::Min => text_size.cx as u32,
+            Size::Fill => text_size.cx as u32 + 32,
+            Size::Min => text_size.cx as u32 + 32,
             Size::Exact(v) => v,
         };
 
         let height = match initial_position.h {
-            Size::Fill => text_size.cy as u32,
-            Size::Min => text_size.cy as u32,
+            Size::Fill => fonts.default_font_height as u32 + 16,
+            Size::Min => fonts.default_font_height as u32 + 16,
             Size::Exact(v) => v,
         };
 
@@ -215,23 +219,94 @@ impl<T> Text<T> {
         }
     }
 
-    pub fn do_state_hook(&mut self, state: &T, layout: &mut Layout, fonts: &Fonts) -> bool {
+    fn get_text_string(&self) -> String {
+        // retrieves currently entered text from textbox
+        unsafe {
+            let len = GetWindowTextLengthW(self.hwnd);
+            let mut buf = Vec::new();
+            buf.resize(len as usize + 1, 0u16);
+            let _ = GetWindowTextW(self.hwnd, &mut buf);
+            let hstr = HSTRING::from_wide(&buf);
+            // for some reason rust is retaining the null terminator
+            // strip it manually
+            hstr.to_string_lossy().trim_end_matches("\0").to_string()
+        }
+    }
+
+    pub fn wndproc_on_focused(
+        &mut self,
+        state: &mut T,
+        _hwnd: HWND,
+        _msg: u32,
+        _wparam: WPARAM,
+        _lparam: LPARAM,
+    ) -> Option<LRESULT> {
+        if let Some(f) = self.on_focused {
+            self.current_state.text = self.get_text_string();
+            (f)(state, &self.current_state.text);
+            Some(LRESULT(0))
+        } else {
+            None
+        }
+    }
+
+    pub fn wndproc_on_unfocused(
+        &mut self,
+        state: &mut T,
+        _hwnd: HWND,
+        _msg: u32,
+        _wparam: WPARAM,
+        _lparam: LPARAM,
+    ) -> Option<LRESULT> {
+        if let Some(f) = self.on_unfocused {
+            self.current_state.text = self.get_text_string();
+            (f)(state, &self.current_state.text);
+            Some(LRESULT(0))
+        } else {
+            None
+        }
+    }
+
+    pub fn wndproc_on_changed(
+        &mut self,
+        state: &mut T,
+        _hwnd: HWND,
+        _msg: u32,
+        _wparam: WPARAM,
+        _lparam: LPARAM,
+    ) -> Option<LRESULT> {
+        if let Some(f) = self.on_changed {
+            self.current_state.text = self.get_text_string();
+            (f)(state, &self.current_state.text);
+            Some(LRESULT(0))
+        } else {
+            None
+        }
+    }
+
+    pub fn do_state_hook(&mut self, state: &T, _layout: &mut Layout, _fonts: &Fonts) -> bool {
         if let Some(f) = self.state_hook {
             let mut new_state = self.current_state.clone();
             (f)(state, &mut new_state);
 
             if new_state != self.current_state {
+                let old_text = self.current_state.text.clone();
                 self.current_state = new_state;
 
                 unsafe {
                     let _ = EnableWindow(self.hwnd, self.current_state.enabled);
 
-                    self.text = HSTRING::from(self.current_state.text.clone());
-                    let _ = SetWindowTextW(self.hwnd, &self.text);
+                    // we have to avoid modifying text if it's not different
+                    // the cursor will move to the start and also, more importantly,
+                    // it will cause a stack overflow.
+                    if self.current_state.text != old_text {
+                        let text = HSTRING::from(self.current_state.text.clone());
+                        let _ = SetWindowTextW(self.hwnd, &text);
+                    }
                 }
 
-                let position = Self::calc_position(self.current_state.position, &self.text, fonts);
-                layout.set_node_position(self.layout_node, position);
+                //let position = Self::calc_position(self.current_state.position, &self.placeholder, fonts);
+                //layout.set_node_position(self.layout_node, position);
                 self.coords = None;
 
                 true

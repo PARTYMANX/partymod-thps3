@@ -8,7 +8,9 @@ use windows::{
             Controls::WC_BUTTONW,
             Input::KeyboardAndMouse::EnableWindow,
             WindowsAndMessaging::{
-                BS_PUSHBUTTON, CreateWindowExW, HMENU, SHOW_WINDOW_CMD, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE
+                BS_PUSHBUTTON, CreateWindowExW, HMENU, SHOW_WINDOW_CMD, SWP_NOACTIVATE,
+                SWP_NOZORDER, SendMessageW, SetWindowPos, SetWindowTextW, ShowWindow,
+                WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE,
             },
         },
     },
@@ -70,10 +72,7 @@ impl<T> Button<T> {
                 WINDOW_EX_STYLE::default(),
                 WC_BUTTONW,
                 &label,
-                WS_TABSTOP
-                    | WS_VISIBLE
-                    | WS_CHILD
-                    | WINDOW_STYLE(BS_PUSHBUTTON as u32),
+                WS_TABSTOP | WS_VISIBLE | WS_CHILD | WINDOW_STYLE(BS_PUSHBUTTON as u32),
                 0,
                 0,
                 width as i32,

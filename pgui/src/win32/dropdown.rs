@@ -2,57 +2,61 @@ use std::ffi::c_void;
 
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, SIZE, WPARAM},
+        Foundation::{HWND, LPARAM, LRESULT, SIZE, WPARAM},
         Graphics::Gdi::{GetDC, GetTextExtentPoint32W, ReleaseDC, SelectObject},
         UI::{
-            Controls::WC_STATICW,
+            Controls::WC_COMBOBOXW,
             Input::KeyboardAndMouse::EnableWindow,
             WindowsAndMessaging::{
-                CreateWindowExW, HMENU, SHOW_WINDOW_CMD, SWP_NOACTIVATE, SWP_NOZORDER,
-                SendMessageW, SetWindowPos, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE,
-                WM_SETFONT, WS_CHILD, WS_TABSTOP, WS_VISIBLE,
+                CB_ADDSTRING, CB_GETCURSEL, CB_SETCURSEL, CBS_DROPDOWNLIST, CreateWindowExW, HMENU,
+                SHOW_WINDOW_CMD, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos,
+                ShowWindow, WINDOW_EX_STYLE, WINDOW_STYLE, WM_SETFONT, WS_CHILD, WS_TABSTOP,
+                WS_VISIBLE,
             },
         },
     },
-    core::HSTRING,
+    core::{HSTRING, w},
 };
 
 use crate::{
+    dropdown::DropdownState,
     genarena::GenArenaKey,
     layout::{Coords, Layout, Position, Size},
-    text::TextState,
     win32::font::Fonts,
 };
 
-pub struct Text<T> {
+pub struct Dropdown<T> {
     hwnd: HWND,
     _id: u16,
-    text: HSTRING,
-    current_state: TextState,
-    state_hook: Option<fn(&T, &mut TextState)>,
+    option_labels: Vec<HSTRING>,
+    current_state: DropdownState,
+    on_selected: Option<fn(&mut T, u32)>,
+    state_hook: Option<fn(&T, &mut DropdownState)>,
     layout_node: GenArenaKey,
     coords: Option<Coords>,
     current_scale: f32,
 }
 
-impl<T> Text<T> {
+impl<T> Dropdown<T> {
     pub fn new(
         window: HWND,
         id: u16,
-        initial_state: TextState,
-        state_hook: Option<fn(&T, &mut TextState)>,
+        initial_state: DropdownState,
+        on_selected: Option<fn(&mut T, u32)>,
+        state_hook: Option<fn(&T, &mut DropdownState)>,
         layout_parent: GenArenaKey,
         layout: &mut Layout,
         fonts: &Fonts,
     ) -> Self {
-        let text = HSTRING::from(initial_state.text.clone());
-        //let utf16_label = label.encode_utf16().collect();
-
-        //PCWSTR::from(utf16_label);
+        let mut option_labels = Vec::new();
+        for option in &initial_state.options {
+            let label = HSTRING::from(option.clone());
+            option_labels.push(label);
+        }
 
         let (hwnd, layout_node) = unsafe {
-            // get size of label (this could probably be moved elsewhere since i assume it'll get reused)
-            let position = Self::calc_position(initial_state.position, &text, fonts);
+            // get size based on option strings
+            let position = Self::calc_position(initial_state.position, &option_labels, fonts);
 
             let width = match position.w {
                 Size::Fill => 0,
@@ -68,9 +72,9 @@ impl<T> Text<T> {
 
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
-                WC_STATICW,
-                &text,
-                WS_TABSTOP | WS_VISIBLE | WS_CHILD,
+                WC_COMBOBOXW,
+                w!(""),
+                WS_TABSTOP | WS_VISIBLE | WS_CHILD | WINDOW_STYLE(CBS_DROPDOWNLIST as u32),
                 0,
                 0,
                 width as i32,
@@ -84,6 +88,17 @@ impl<T> Text<T> {
 
             let layout_node =
                 layout.add_node(layout_parent, crate::layout::LayoutNodeType::Leaf, position);
+
+            for label in &option_labels {
+                SendMessageW(
+                    hwnd,
+                    CB_ADDSTRING,
+                    None,
+                    Some(LPARAM(label.as_ptr() as isize)),
+                );
+            }
+
+            SendMessageW(hwnd, CB_SETCURSEL, Some(WPARAM(0)), None);
 
             // set the font to the correct one
             SendMessageW(
@@ -101,8 +116,9 @@ impl<T> Text<T> {
         Self {
             hwnd,
             _id: id,
-            text,
+            option_labels,
             current_state: initial_state,
+            on_selected,
             state_hook,
             layout_node,
             coords: None,
@@ -110,27 +126,35 @@ impl<T> Text<T> {
         }
     }
 
-    fn calc_position(initial_position: Position, label: &HSTRING, fonts: &Fonts) -> Position {
-        // get size of label (this could probably be moved elsewhere since i assume it'll get reused)
+    fn calc_position(initial_position: Position, labels: &Vec<HSTRING>, fonts: &Fonts) -> Position {
+        // get size of all option strings
         let text_size = unsafe {
             let hdc = GetDC(None);
             let _ = SelectObject(hdc, fonts.default_font.into());
-            let mut text_size = SIZE::default();
-            let _ = GetTextExtentPoint32W(hdc, &label, &mut text_size);
+
+            let mut result = SIZE::default();
+            for label in labels {
+                let mut text_size = SIZE::default();
+                let _ = GetTextExtentPoint32W(hdc, label, &mut text_size);
+
+                result.cx = result.cx.max(text_size.cx);
+                result.cy = result.cy.max(text_size.cy);
+            }
+
             ReleaseDC(None, hdc);
 
-            text_size
+            result
         };
 
         let width = match initial_position.w {
-            Size::Fill => text_size.cx as u32,
-            Size::Min => text_size.cx as u32,
+            Size::Fill => text_size.cx as u32 + 32,
+            Size::Min => text_size.cx as u32 + 32,
             Size::Exact(v) => v,
         };
 
         let height = match initial_position.h {
-            Size::Fill => text_size.cy as u32,
-            Size::Min => text_size.cy as u32,
+            Size::Fill => fonts.default_font_height as u32 + 16,
+            Size::Min => fonts.default_font_height as u32 + 16,
             Size::Exact(v) => v,
         };
 
@@ -215,6 +239,25 @@ impl<T> Text<T> {
         }
     }
 
+    pub fn wndproc_on_selected(
+        &mut self,
+        state: &mut T,
+        _hwnd: HWND,
+        _msg: u32,
+        _wparam: WPARAM,
+        _lparam: LPARAM,
+    ) -> Option<LRESULT> {
+        if let Some(f) = self.on_selected {
+            let idx = unsafe { SendMessageW(self.hwnd, CB_GETCURSEL, None, None).0 as u32 };
+            self.current_state.selected = idx;
+
+            (f)(state, idx);
+            Some(LRESULT(0))
+        } else {
+            None
+        }
+    }
+
     pub fn do_state_hook(&mut self, state: &T, layout: &mut Layout, fonts: &Fonts) -> bool {
         if let Some(f) = self.state_hook {
             let mut new_state = self.current_state.clone();
@@ -226,11 +269,19 @@ impl<T> Text<T> {
                 unsafe {
                     let _ = EnableWindow(self.hwnd, self.current_state.enabled);
 
-                    self.text = HSTRING::from(self.current_state.text.clone());
-                    let _ = SetWindowTextW(self.hwnd, &self.text);
+                    SendMessageW(
+                        self.hwnd,
+                        CB_SETCURSEL,
+                        Some(WPARAM(self.current_state.selected as usize)),
+                        None,
+                    );
+
+                    /*self.label = HSTRING::from(self.current_state.label.clone());
+                    let _ = SetWindowTextW(self.hwnd, &self.label);*/
                 }
 
-                let position = Self::calc_position(self.current_state.position, &self.text, fonts);
+                let position =
+                    Self::calc_position(self.current_state.position, &self.option_labels, fonts);
                 layout.set_node_position(self.layout_node, position);
                 self.coords = None;
 

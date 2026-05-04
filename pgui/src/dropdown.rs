@@ -1,28 +1,33 @@
-use crate::{
-    component::Component,
-    layout::{HorizontalOffset, Position, Size, VerticalOffset},
-};
+use crate::layout::{HorizontalOffset, Position, Size, VerticalOffset};
 
-pub struct Tabs<T> {
-    pub(crate) tabs: Vec<Tab<T>>,
+pub struct Dropdown<T> {
+    pub(crate) options: Vec<String>,
     pub(crate) enabled: bool,
-    pub(crate) state_hook: Option<fn(&T, &mut TabsState)>,
+    pub(crate) on_select: Option<fn(&mut T, u32)>,
+    pub(crate) state_hook: Option<fn(&T, &mut DropdownState)>,
     pub(crate) position: Position,
 }
 
-pub struct Tab<T> {
-    pub label: String,
-    pub child: Component<T>,
-}
-
 #[derive(Clone, PartialEq, Eq)]
-pub struct TabsState {
+pub struct DropdownState {
+    pub options: Vec<String>,
+    pub selected: u32,
     pub enabled: bool,
     pub position: Position,
 }
 
-impl<T> Tabs<T> {
-    pub fn state_hook(mut self, func: fn(&T, &mut TabsState)) -> Self {
+impl<T> Dropdown<T> {
+    pub fn on_select(mut self, func: fn(&mut T, u32)) -> Self {
+        self.on_select = Some(func);
+
+        if !self.enabled {
+            self.enabled = true;
+        }
+
+        self
+    }
+
+    pub fn state_hook(mut self, func: fn(&T, &mut DropdownState)) -> Self {
         self.state_hook = Some(func);
         self
     }
@@ -75,10 +80,11 @@ impl<T> Tabs<T> {
     }
 }
 
-pub fn tabs<T>(tabs: Vec<Tab<T>>) -> Tabs<T> {
-    Tabs {
-        tabs,
-        enabled: true,
+pub fn dropdown<T>(options: Vec<String>) -> Dropdown<T> {
+    Dropdown {
+        options,
+        enabled: false,
+        on_select: None,
         state_hook: None,
         position: Position::default(),
     }

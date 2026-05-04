@@ -1,4 +1,6 @@
-use pgui::{app, button, checkbox, container, groupbox, layout, tabs, text, window};
+use pgui::{
+    app, button, checkbox, container, dropdown, groupbox, layout, tabs, text, textbox, window,
+};
 
 fn main() {
     let state = 0;
@@ -24,9 +26,32 @@ fn main() {
                                 }
                             })
                             .into(),
-                        text::text("Text".to_string())
-                            .into(),
+                        text::text("Text".to_string()).into(),
+                        dropdown::dropdown(vec![
+                            "Option 1".to_string(),
+                            "Option 2".to_string(),
+                            "Option 3".to_string(),
                         ])
+                        .on_select(|_st, i| {
+                            println!("Selected {}!", i);
+                        })
+                        .into(),
+                        textbox::textbox("Textbox".to_string())
+                            .on_focus(|_st, t| {
+                                println!("Focused {}!", t);
+                            })
+                            .on_unfocus(|_st, t| {
+                                println!("Unfocused {}!", t);
+                            })
+                            .on_change(|_st, t| {
+                                println!("Changed {}!", t);
+                            })
+                            .state_hook(|st, text_state| {
+                                text_state.text = format!("{} piss!", st);
+                            })
+                            .width(layout::Size::Exact(100))
+                            .into(),
+                    ])
                     .spacing(16)
                     .h_position(layout::HorizontalOffset::AlignLeft(0))
                     .v_position(layout::VerticalOffset::AlignTop(0))

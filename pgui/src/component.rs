@@ -2,6 +2,8 @@ pub enum Component<T> {
     Button(crate::button::Button<T>),
     Checkbox(crate::checkbox::Checkbox<T>),
     Text(crate::text::Text<T>),
+    Dropdown(crate::dropdown::Dropdown<T>),
+    Textbox(crate::textbox::Textbox<T>),
     Container(crate::container::Container<T>),
     Groupbox(crate::groupbox::Groupbox<T>),
     Tabs(crate::tabs::Tabs<T>),
@@ -24,6 +26,18 @@ impl<T> From<crate::checkbox::Checkbox<T>> for Component<T> {
 impl<T> From<crate::text::Text<T>> for Component<T> {
     fn from(value: crate::text::Text<T>) -> Self {
         Component::Text(value)
+    }
+}
+
+impl<T> From<crate::dropdown::Dropdown<T>> for Component<T> {
+    fn from(value: crate::dropdown::Dropdown<T>) -> Self {
+        Component::Dropdown(value)
+    }
+}
+
+impl<T> From<crate::textbox::Textbox<T>> for Component<T> {
+    fn from(value: crate::textbox::Textbox<T>) -> Self {
+        Component::Textbox(value)
     }
 }
 

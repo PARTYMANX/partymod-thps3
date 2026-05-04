@@ -1,28 +1,54 @@
-use crate::{
-    component::Component,
-    layout::{HorizontalOffset, Position, Size, VerticalOffset},
-};
+use crate::layout::{HorizontalOffset, Position, Size, VerticalOffset};
 
-pub struct Tabs<T> {
-    pub(crate) tabs: Vec<Tab<T>>,
+pub struct Textbox<T> {
+    pub(crate) initial: String,
     pub(crate) enabled: bool,
-    pub(crate) state_hook: Option<fn(&T, &mut TabsState)>,
+    pub(crate) on_focus: Option<fn(&mut T, &String)>,
+    pub(crate) on_unfocus: Option<fn(&mut T, &String)>,
+    pub(crate) on_change: Option<fn(&mut T, &String)>,
+    pub(crate) state_hook: Option<fn(&T, &mut TextboxState)>,
     pub(crate) position: Position,
 }
 
-pub struct Tab<T> {
-    pub label: String,
-    pub child: Component<T>,
-}
-
 #[derive(Clone, PartialEq, Eq)]
-pub struct TabsState {
+pub struct TextboxState {
+    pub text: String,
     pub enabled: bool,
     pub position: Position,
 }
 
-impl<T> Tabs<T> {
-    pub fn state_hook(mut self, func: fn(&T, &mut TabsState)) -> Self {
+impl<T> Textbox<T> {
+    pub fn on_focus(mut self, func: fn(&mut T, &String)) -> Self {
+        self.on_focus = Some(func);
+
+        if !self.enabled {
+            self.enabled = true;
+        }
+
+        self
+    }
+
+    pub fn on_unfocus(mut self, func: fn(&mut T, &String)) -> Self {
+        self.on_unfocus = Some(func);
+
+        if !self.enabled {
+            self.enabled = true;
+        }
+
+        self
+    }
+
+    pub fn on_change(mut self, func: fn(&mut T, &String)) -> Self {
+        self.on_change = Some(func);
+
+        if !self.enabled {
+            self.enabled = true;
+        }
+
+        self
+    }
+
+    pub fn state_hook(mut self, func: fn(&T, &mut TextboxState)) -> Self {
         self.state_hook = Some(func);
         self
     }
@@ -75,10 +101,13 @@ impl<T> Tabs<T> {
     }
 }
 
-pub fn tabs<T>(tabs: Vec<Tab<T>>) -> Tabs<T> {
-    Tabs {
-        tabs,
-        enabled: true,
+pub fn textbox<T>(initial: String) -> Textbox<T> {
+    Textbox {
+        initial,
+        enabled: false,
+        on_focus: None,
+        on_unfocus: None,
+        on_change: None,
         state_hook: None,
         position: Position::default(),
     }

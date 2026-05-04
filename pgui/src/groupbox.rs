@@ -1,4 +1,7 @@
-use crate::{component::Component, layout::{HorizontalOffset, Position, Size, VerticalOffset}};
+use crate::{
+    component::Component,
+    layout::{HorizontalOffset, Position, Size, VerticalOffset},
+};
 
 pub struct Groupbox<T> {
     pub(crate) label: String,
