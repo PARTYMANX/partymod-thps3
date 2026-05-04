@@ -38,11 +38,11 @@ fn main() {
             },
             tabs::Tab {
                 label: "Tab 2".to_string(),
-                child: text::text("This is tab 2!".to_string()).into(),
+                child: text::text("This is tab 2!!!! ".to_string()).into(),
             },
             tabs::Tab {
                 label: "Tab 3".to_string(),
-                child: text::text("This is tab 3!".to_string()).into(),
+                child: text::text("This is tab 3!!!! ".to_string()).into(),
             },
         ])
         .width(layout::Size::Fill)

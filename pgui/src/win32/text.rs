@@ -164,6 +164,10 @@ impl<T> Text<T> {
         }
     }
 
+    pub fn compare_hwnd(&self, hwnd: HWND) -> bool {
+        self.hwnd == hwnd
+    }
+
     pub fn update(&mut self, layout: &mut Layout, fonts: &Fonts, scale: f32) {
         let mut update_position = false;
         let mut update_font = false;

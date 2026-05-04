@@ -2,14 +2,13 @@ use std::ffi::c_void;
 
 use windows::{
     Win32::{
-        Foundation::{HWND, LPARAM, WPARAM},
-        UI::{
-            Controls::{TAB_CONTROL_ITEM_STATE, TCIF_IMAGE, TCIF_TEXT, TCITEMW, TCM_INSERTITEMW, WC_TABCONTROLW},
+        Foundation::{HWND, LPARAM, RECT, WPARAM}, Graphics::Gdi::{CreateCompatibleBitmap, CreateCompatibleDC, CreatePatternBrush, DeleteDC, DeleteObject, GetDC, HBRUSH, HGDIOBJ, ReleaseDC, SelectObject}, UI::{
+            Controls::{TAB_CONTROL_ITEM_STATE, TCIF_IMAGE, TCIF_TEXT, TCITEMW, TCM_INSERTITEMW, TCM_SETCURSEL, WC_TABCONTROLW},
             Input::KeyboardAndMouse::EnableWindow,
             WindowsAndMessaging::{
-                CB_SETCURSEL, CreateWindowExW, HMENU, SHOW_WINDOW_CMD, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, ShowWindow, WINDOW_EX_STYLE, WM_SETFONT, WS_CHILD, WS_VISIBLE
+                CreateWindowExW, GetWindowRect, HMENU, PRF_CLIENT, PRF_ERASEBKGND, PRF_NONCLIENT, SHOW_WINDOW_CMD, SWP_NOACTIVATE, SWP_NOZORDER, SendMessageW, SetWindowPos, ShowWindow, WINDOW_EX_STYLE, WM_PRINTCLIENT, WM_SETFONT, WS_CHILD, WS_VISIBLE
             },
-        },
+        }
     },
     core::{HSTRING, PWSTR, w},
 };
@@ -22,6 +21,8 @@ pub struct Tabs<T> {
     hwnd: HWND,
     _id: u16,
     current_state: TabsState,
+    current_tab: u32,
+    brush: Option<HBRUSH>,  // TODO: invalidate brush when resizing
     state_hook: Option<fn(&T, &mut TabsState)>,
     outer_layout_node: GenArenaKey,
     inner_layout_node: GenArenaKey,
@@ -100,13 +101,13 @@ impl<T> Tabs<T> {
                     w: crate::layout::Size::Fill, 
                     h: crate::layout::Size::Fill, 
                     x: crate::layout::HorizontalOffset::AlignLeft(0), 
-                    y: crate::layout::VerticalOffset::AlignTop(16), 
-                    h_padding: 16, 
-                    v_padding: 16,
+                    y: crate::layout::VerticalOffset::AlignTop(24), 
+                    h_padding: 0, 
+                    v_padding: 0,
                 },
             );
 
-            SendMessageW(hwnd, CB_SETCURSEL, Some(WPARAM(0)), None);
+            SendMessageW(hwnd, TCM_SETCURSEL, Some(WPARAM(0)), None);
 
             // set the font to the correct one
             SendMessageW(
@@ -125,6 +126,8 @@ impl<T> Tabs<T> {
             hwnd,
             _id: id,
             current_state: initial_state,
+            current_tab: 0,
+            brush: None,
             state_hook,
             inner_layout_node,
             outer_layout_node,
@@ -137,6 +140,52 @@ impl<T> Tabs<T> {
         self.inner_layout_node
     }
 
+    pub fn get_current_tab(&self) -> u32 {
+        self.current_tab
+    }
+
+    pub fn set_current_tab(&mut self, tab: u32) {
+        self.current_tab = tab;
+    }
+
+    pub fn get_hwnd(&self) -> HWND {
+        self.hwnd
+    }
+
+    pub fn get_or_create_brush(&mut self) -> HBRUSH {
+        match self.brush {
+            Some(b) => b,
+            None => {
+                let mut rc = RECT::default();
+
+                unsafe {
+                    let _ = GetWindowRect(self.hwnd, &mut rc);
+                    let hdc = GetDC(Some(self.hwnd));
+                    let hdc_new = CreateCompatibleDC(Some(hdc));    // create a new device context to draw our tab into
+                    let hbmp = CreateCompatibleBitmap(hdc, rc.right - rc.left, rc.bottom - rc.top); // create a new bitmap to draw the tab into
+                    let hbmp_old = SelectObject(hdc_new, HGDIOBJ(hbmp.0));  // replace the device context's bitmap with our new bitmap
+
+                    // draw the tab into our bitmap
+                    SendMessageW(
+                        self.hwnd, 
+                        WM_PRINTCLIENT, 
+                        Some(WPARAM(hdc_new.0 as usize)), 
+                        Some(LPARAM((PRF_ERASEBKGND | PRF_CLIENT | PRF_NONCLIENT) as isize))
+                    );
+                    let brush = CreatePatternBrush(hbmp);   // create a brush from the bitmap
+                    SelectObject(hdc_new, hbmp_old);    // replace the bitmap in the device context
+
+                    let _ = DeleteObject(HGDIOBJ(hbmp.0));
+                    let _ = DeleteDC(hdc_new);
+                    ReleaseDC(Some(self.hwnd), hdc);
+
+                    self.brush = Some(brush);
+                    brush
+                }
+            }
+        }
+    }
+
     pub fn hide(&self, hidden: bool) {
         let show_cmd = if hidden {
             SHOW_WINDOW_CMD(0)
@@ -147,6 +196,10 @@ impl<T> Tabs<T> {
         unsafe {
             let _ = ShowWindow(self.hwnd, show_cmd);
         }
+    }
+
+    pub fn compare_hwnd(&self, hwnd: HWND) -> bool {
+        self.hwnd == hwnd
     }
 
     pub fn update(&mut self, layout: &mut Layout, fonts: &Fonts, scale: f32) {
