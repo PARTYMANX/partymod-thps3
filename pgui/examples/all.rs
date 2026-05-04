@@ -46,9 +46,6 @@ fn main() {
                             .on_change(|_st, t| {
                                 println!("Changed {}!", t);
                             })
-                            .state_hook(|st, text_state| {
-                                text_state.text = format!("{} piss!", st);
-                            })
                             .width(layout::Size::Exact(100))
                             .into(),
                     ])
