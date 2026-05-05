@@ -767,10 +767,29 @@ impl<T> Window<T> {
         };
 
         unsafe {
+            // resize once to get the correct decoration size
             let mut client_rect = RECT::default();
             let _ = GetClientRect(self.hwnd, &mut client_rect);
 
             let mut window_rect = RECT::default();
+            let _ = GetWindowRect(self.hwnd, &mut window_rect);
+
+            let (x, y) = match suggested_pos {
+                Some(v) => v,
+                None => (window_rect.left, window_rect.top),
+            };
+
+            let _ = MoveWindow(
+                self.hwnd,
+                x,
+                y,
+                (self.width as f32 * self.scale) as i32,
+                (self.height as f32 * self.scale) as i32,
+                true,
+            );
+
+            // get our real size
+            let _ = GetClientRect(self.hwnd, &mut client_rect);
             let _ = GetWindowRect(self.hwnd, &mut window_rect);
 
             let deco_width = (window_rect.right - window_rect.left) - client_rect.right;
@@ -778,11 +797,6 @@ impl<T> Window<T> {
 
             let width = (self.width as f32 * self.scale) as i32;
             let height = (self.height as f32 * self.scale) as i32;
-
-            let (x, y) = match suggested_pos {
-                Some(v) => v,
-                None => (window_rect.left, window_rect.top),
-            };
 
             let _ = MoveWindow(
                 self.hwnd,
@@ -947,7 +961,7 @@ impl<T> Window<T> {
                         let mut tab_result = None;
                         let mut current_component = self
                             .component_tree
-                            .get(self.component_nodes[component_id - 1])
+                            .get(self.component_nodes[component_id])
                             .unwrap();
                         loop {
                             match current_component.ty {
@@ -991,6 +1005,7 @@ impl<T> Window<T> {
                             SetBkMode(h_edit, TRANSPARENT);
 
                             let _ = GetWindowRect(target_hwnd, &mut rc);
+
                             let mut points = [
                                 POINT {
                                     x: rc.left,
@@ -1002,7 +1017,7 @@ impl<T> Window<T> {
                                 },
                             ];
                             MapWindowPoints(None, Some(tabs.get_hwnd()), &mut points);
-                            let _ = SetBrushOrgEx(h_edit, -rc.left, -rc.top, None);
+                            let _ = SetBrushOrgEx(h_edit, -points[0].x, -points[0].y, None);
 
                             result = Some(LRESULT(brush.0 as isize));
                         }
