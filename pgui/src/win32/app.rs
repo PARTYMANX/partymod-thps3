@@ -72,6 +72,7 @@ pub fn run<T: 'static>(
             window.width,
             window.height,
             window.title,
+            window.state_hook,
             window.post_update,
         );
 

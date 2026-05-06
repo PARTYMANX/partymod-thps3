@@ -153,8 +153,8 @@ impl<T> Dropdown<T> {
         };
 
         let height = match initial_position.h {
-            Size::Fill => fonts.default_font_height as u32 + 16,
-            Size::Min => fonts.default_font_height as u32 + 16,
+            Size::Fill => fonts.default_font_height as u32 + 12,
+            Size::Min => fonts.default_font_height as u32 + 12,
             Size::Exact(v) => v,
         };
 

@@ -11,11 +11,7 @@ use windows::{
             Controls::{NMHDR, TCM_GETCURSEL, TCN_SELCHANGE, WM_CTLCOLOR},
             HiDpi::GetDpiForWindow,
             WindowsAndMessaging::{
-                CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, EN_CHANGE, EN_KILLFOCUS,
-                EN_SETFOCUS, GetClientRect, GetWindowRect, MoveWindow, PostQuitMessage,
-                SendMessageW, WINDOW_EX_STYLE, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC,
-                WM_DESTROY, WM_DPICHANGED, WM_NOTIFY, WM_PAINT, WS_CAPTION, WS_MINIMIZEBOX,
-                WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE,
+                CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, EN_CHANGE, EN_KILLFOCUS, EN_SETFOCUS, GetClientRect, GetWindowRect, MoveWindow, PostQuitMessage, SendMessageW, SetWindowTextW, WINDOW_EX_STYLE, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_NOTIFY, WM_PAINT, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE
             },
         },
     },
@@ -35,7 +31,7 @@ use crate::{
     win32::{
         button::Button, checkbox::Checkbox, dropdown::Dropdown, font::Fonts, groupbox::Groupbox,
         tabs::Tabs, text::Text, textbox::Textbox,
-    },
+    }, window::WindowState,
 };
 
 pub enum Component<T> {
@@ -52,10 +48,9 @@ pub struct Window<T> {
     hwnd: HWND,
 
     scale: f32,
-    width: u32,
-    height: u32,
-    _title: HSTRING,
+    state: WindowState,
 
+    state_hook: Option<fn(&T, &mut WindowState)>,
     post_update: Option<fn(&mut T)>,
 
     components: Vec<Component<T>>,
@@ -73,15 +68,16 @@ impl<T> Window<T> {
         width: u32,
         height: u32,
         title: String,
+        state_hook: Option<fn(&T, &mut WindowState)>,
         post_update: Option<fn(&mut T)>,
     ) -> Self {
-        let title = HSTRING::from(title);
+        let title_hstring = HSTRING::from(title.clone());
 
         let window = unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
                 window_class,
-                &title,
+                &title_hstring,
                 WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
@@ -156,10 +152,14 @@ impl<T> Window<T> {
             hwnd: window,
 
             scale,
-            width,
-            height,
-            _title: title,
+            state: WindowState {
+                width,
+                height,
+                title,
+                should_quit: false
+            },
 
+            state_hook,
             post_update,
 
             components: native_components,
@@ -783,8 +783,8 @@ impl<T> Window<T> {
                 self.hwnd,
                 x,
                 y,
-                (self.width as f32 * self.scale) as i32,
-                (self.height as f32 * self.scale) as i32,
+                (self.state.width as f32 * self.scale) as i32,
+                (self.state.height as f32 * self.scale) as i32,
                 true,
             );
 
@@ -795,8 +795,8 @@ impl<T> Window<T> {
             let deco_width = (window_rect.right - window_rect.left) - client_rect.right;
             let deco_height = (window_rect.bottom - window_rect.top) - client_rect.bottom;
 
-            let width = (self.width as f32 * self.scale) as i32;
-            let height = (self.height as f32 * self.scale) as i32;
+            let width = (self.state.width as f32 * self.scale) as i32;
+            let height = (self.state.height as f32 * self.scale) as i32;
 
             let _ = MoveWindow(
                 self.hwnd,
@@ -842,6 +842,8 @@ impl<T> Window<T> {
 
     pub fn run_state_hooks(&mut self, state: &T) {
         let mut updated = false;
+
+        updated |= self.do_window_state_hook(state);
 
         for c in &mut self.components {
             updated |= match c {
@@ -889,6 +891,37 @@ impl<T> Window<T> {
                     Component::Tabs(tabs) => tabs.update(&mut self.layout, &self.fonts, self.scale),
                 }
             }
+        }
+    }
+
+    pub fn do_window_state_hook(&mut self, state: &T) -> bool {
+        if let Some(f) = self.state_hook {
+            let old_state = self.state.clone();
+
+            (f)(state, &mut self.state);
+
+            if old_state != self.state {
+                let title_hstring = HSTRING::from(self.state.title.clone());
+                unsafe {
+                    let _ = SetWindowTextW(self.hwnd, &title_hstring);
+                }
+                
+                if self.state.should_quit {
+                    unsafe {
+                        PostQuitMessage(0);
+                    }
+                }
+
+                if self.state.width != old_state.width || self.state.height != old_state.height {
+                    self.rescale(None);
+                }
+
+                true
+            } else {
+                false
+            }
+        } else {
+            false
         }
     }
 

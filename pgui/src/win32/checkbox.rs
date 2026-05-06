@@ -132,8 +132,8 @@ impl<T> Checkbox<T> {
         };
 
         let height = match initial_position.h {
-            Size::Fill => 26.max(text_size.cy as u32),
-            Size::Min => 26.max(text_size.cy as u32),
+            Size::Fill => 16.max(text_size.cy as u32),
+            Size::Min => 16.max(text_size.cy as u32),
             Size::Exact(v) => v,
         };
 
