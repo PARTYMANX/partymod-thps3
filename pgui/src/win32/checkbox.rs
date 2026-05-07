@@ -48,9 +48,6 @@ impl<T> Checkbox<T> {
         fonts: &Fonts,
     ) -> Self {
         let label = HSTRING::from(initial_state.label.clone());
-        //let utf16_label = label.encode_utf16().collect();
-
-        //PCWSTR::from(utf16_label);
 
         let (hwnd, layout_node) = unsafe {
             // get size of label (this could probably be moved elsewhere since i assume it'll get reused)
@@ -257,19 +254,27 @@ impl<T> Checkbox<T> {
     }
 
     pub fn do_state_hook(&mut self, state: &T, layout: &mut Layout, fonts: &Fonts) -> bool {
+        let mut updated = false;
+
         if let Some(f) = self.state_hook {
-            let mut new_state = self.current_state.clone();
-            (f)(state, &mut new_state);
+            let old_state = self.current_state.clone();
+            (f)(state, &mut self.current_state);
 
-            if new_state != self.current_state {
-                self.current_state = new_state;
-
-                unsafe {
+            unsafe {
+                if self.current_state.enabled != old_state.enabled {
                     let _ = EnableWindow(self.hwnd, self.current_state.enabled);
 
+                    updated = true;
+                }
+
+                if self.current_state.label != old_state.label {
                     self.label = HSTRING::from(self.current_state.label.clone());
                     let _ = SetWindowTextW(self.hwnd, &self.label);
 
+                    updated = true;
+                }
+
+                if self.current_state.checked != old_state.checked {
                     if self.current_state.checked {
                         SendMessageW(
                             self.hwnd,
@@ -285,18 +290,20 @@ impl<T> Checkbox<T> {
                             None,
                         );
                     }
-                }
 
+                    updated = true;
+                }
+            }
+
+            if self.current_state.position != old_state.position {
                 let position = Self::calc_position(self.current_state.position, &self.label, fonts);
                 layout.set_node_position(self.layout_node, position);
                 self.coords = None;
 
-                true
-            } else {
-                false
+                updated = true;
             }
-        } else {
-            false
         }
+        
+        updated
     }
 }

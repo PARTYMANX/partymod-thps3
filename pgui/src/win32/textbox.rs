@@ -285,36 +285,39 @@ impl<T> Textbox<T> {
     }
 
     pub fn do_state_hook(&mut self, state: &T, _layout: &mut Layout, _fonts: &Fonts) -> bool {
+        let mut updated = false;
+
         if let Some(f) = self.state_hook {
-            let mut new_state = self.current_state.clone();
-            (f)(state, &mut new_state);
+            let old_state = self.current_state.clone();
+            (f)(state, &mut self.current_state);
 
-            if new_state != self.current_state {
-                let old_text = self.current_state.text.clone();
-                self.current_state = new_state;
-
-                unsafe {
+            unsafe {
+                if self.current_state.enabled != old_state.enabled {
                     let _ = EnableWindow(self.hwnd, self.current_state.enabled);
 
-                    // we have to avoid modifying text if it's not different
-                    // the cursor will move to the start and also, more importantly,
-                    // it will cause a stack overflow.
-                    if self.current_state.text != old_text {
-                        let text = HSTRING::from(self.current_state.text.clone());
-                        let _ = SetWindowTextW(self.hwnd, &text);
-                    }
+                    updated = true;
                 }
 
+                // we have to avoid modifying text if it's not different
+                // the cursor will move to the start and also, more importantly,
+                // it will cause a stack overflow with change events.
+                if self.current_state.text != old_state.text {
+                    let text = HSTRING::from(self.current_state.text.clone());
+                    let _ = SetWindowTextW(self.hwnd, &text);
+
+                    updated = true;
+                }
+            }
+
+            if self.current_state.position != old_state.position {
                 //let position = Self::calc_position(self.current_state.position, &self.placeholder, fonts);
                 //layout.set_node_position(self.layout_node, position);
                 self.coords = None;
 
-                true
-            } else {
-                false
+                updated = true;
             }
-        } else {
-            false
         }
+
+        updated
     }
 }

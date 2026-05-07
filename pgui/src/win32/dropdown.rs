@@ -3,7 +3,7 @@ use std::ffi::c_void;
 use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, SIZE, WPARAM},
-        Graphics::Gdi::{GetDC, GetTextExtentPoint32W, ReleaseDC, SelectObject},
+        Graphics::Gdi::{GetDC, GetTextExtentPoint32W, InvalidateRect, ReleaseDC, SelectObject},
         UI::{
             Controls::WC_COMBOBOXW,
             Input::KeyboardAndMouse::EnableWindow,
@@ -259,16 +259,20 @@ impl<T> Dropdown<T> {
     }
 
     pub fn do_state_hook(&mut self, state: &T, layout: &mut Layout, fonts: &Fonts) -> bool {
+        let mut updated = false;
+
         if let Some(f) = self.state_hook {
-            let mut new_state = self.current_state.clone();
-            (f)(state, &mut new_state);
+            let old_state = self.current_state.clone();
+            (f)(state, &mut self.current_state);
 
-            if new_state != self.current_state {
-                self.current_state = new_state;
-
-                unsafe {
+            unsafe {
+                if self.current_state.enabled != old_state.enabled {
                     let _ = EnableWindow(self.hwnd, self.current_state.enabled);
 
+                    updated = true;
+                }
+
+                if self.current_state.selected != old_state.selected {
                     SendMessageW(
                         self.hwnd,
                         CB_SETCURSEL,
@@ -276,21 +280,26 @@ impl<T> Dropdown<T> {
                         None,
                     );
 
-                    /*self.label = HSTRING::from(self.current_state.label.clone());
-                    let _ = SetWindowTextW(self.hwnd, &self.label);*/
+                    // workaround for a bug where dropdowns won't show up after selection changes
+                    let _ = InvalidateRect(Some(self.hwnd), None, true);
+
+                    updated = true;
                 }
 
+                /*self.label = HSTRING::from(self.current_state.label.clone());
+                let _ = SetWindowTextW(self.hwnd, &self.label);*/
+            }
+
+            if self.current_state.position != old_state.position {
                 let position =
                     Self::calc_position(self.current_state.position, &self.option_labels, fonts);
                 layout.set_node_position(self.layout_node, position);
                 self.coords = None;
 
-                true
-            } else {
-                false
+                updated = true;
             }
-        } else {
-            false
-        }
+        } 
+        
+        updated
     }
 }

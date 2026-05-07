@@ -286,27 +286,29 @@ impl<T> Tabs<T> {
     }
 
     pub fn do_state_hook(&mut self, state: &T, layout: &mut Layout, _fonts: &Fonts) -> bool {
+        let mut updated = false;
+
         if let Some(f) = self.state_hook {
-            let mut new_state = self.current_state.clone();
-            (f)(state, &mut new_state);
+            let old_state = self.current_state.clone();
+            (f)(state, &mut self.current_state);
 
-            if new_state != self.current_state {
-                self.current_state = new_state;
-
+            if self.current_state.enabled != old_state.enabled {
                 unsafe {
                     let _ = EnableWindow(self.hwnd, self.current_state.enabled);
                 }
 
+                updated = true;
+            }
+
+            if self.current_state.position != old_state.position {
                 let position = self.current_state.position;
                 layout.set_node_position(self.outer_layout_node, position);
                 self.coords = None;
 
-                true
-            } else {
-                false
+                updated = true;
             }
-        } else {
-            false
         }
+
+        updated
     }
 }

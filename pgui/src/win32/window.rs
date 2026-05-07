@@ -91,9 +91,13 @@ impl<T> Window<T> {
             .unwrap()
         };
 
-        let scale = 1.0;
+        let scale = unsafe {
+            let dpi = GetDpiForWindow(window);
+            dpi as f32 / 96.0
+        };
 
-        let fonts = Fonts::new();
+        let mut fonts = Fonts::new();
+        fonts.update(scale);
 
         // resize window to actually desired size
         unsafe {
@@ -110,8 +114,8 @@ impl<T> Window<T> {
                 window,
                 window_rect.left,
                 window_rect.top,
-                width as i32 + deco_width,
-                height as i32 + deco_height,
+                (width as f32 * scale) as i32 + deco_width,
+                (height as f32 * scale) as i32 + deco_height,
                 true,
             );
         }
@@ -138,13 +142,13 @@ impl<T> Window<T> {
 
         for native_component in &mut native_components {
             match native_component {
-                Component::Button(button) => button.update(&mut layout, &fonts, 1.0),
-                Component::Checkbox(checkbox) => checkbox.update(&mut layout, &fonts, 1.0),
-                Component::Text(text) => text.update(&mut layout, &fonts, 1.0),
-                Component::Dropdown(dropdown) => dropdown.update(&mut layout, &fonts, 1.0),
-                Component::Textbox(textbox) => textbox.update(&mut layout, &fonts, 1.0),
-                Component::Groupbox(groupbox) => groupbox.update(&mut layout, &fonts, 1.0),
-                Component::Tabs(tabs) => tabs.update(&mut layout, &fonts, 1.0),
+                Component::Button(button) => button.update(&mut layout, &fonts, scale),
+                Component::Checkbox(checkbox) => checkbox.update(&mut layout, &fonts, scale),
+                Component::Text(text) => text.update(&mut layout, &fonts, scale),
+                Component::Dropdown(dropdown) => dropdown.update(&mut layout, &fonts, scale),
+                Component::Textbox(textbox) => textbox.update(&mut layout, &fonts, scale),
+                Component::Groupbox(groupbox) => groupbox.update(&mut layout, &fonts, scale),
+                Component::Tabs(tabs) => tabs.update(&mut layout, &fonts, scale),
             }
         }
 
