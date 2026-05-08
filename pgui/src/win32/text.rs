@@ -29,7 +29,7 @@ pub struct Text<T> {
     _id: u16,
     text: HSTRING,
     current_state: TextState,
-    state_hook: Option<fn(&T, &mut TextState)>,
+    state_hook: Option<Box<dyn Fn(&T, &mut TextState)>>,
     layout_node: GenArenaKey,
     coords: Option<Coords>,
     current_scale: f32,
@@ -40,7 +40,7 @@ impl<T> Text<T> {
         window: HWND,
         id: u16,
         initial_state: TextState,
-        state_hook: Option<fn(&T, &mut TextState)>,
+        state_hook: Option<Box<dyn Fn(&T, &mut TextState)>>,
         layout_parent: GenArenaKey,
         layout: &mut Layout,
         fonts: &Fonts,
@@ -215,7 +215,7 @@ impl<T> Text<T> {
     pub fn do_state_hook(&mut self, state: &T, layout: &mut Layout, fonts: &Fonts) -> bool {
         let mut updated = false;
 
-        if let Some(f) = self.state_hook {
+        if let Some(f) = &self.state_hook {
             let old_state = self.current_state.clone();
             (f)(state, &mut self.current_state);
 

@@ -28,7 +28,7 @@ pub struct Groupbox<T> {
     _id: u16,
     label: HSTRING,
     current_state: GroupboxState,
-    state_hook: Option<fn(&T, &mut GroupboxState)>,
+    state_hook: Option<Box<dyn Fn(&T, &mut GroupboxState)>>,
     outer_layout_node: GenArenaKey,
     inner_layout_node: GenArenaKey,
     coords: Option<Coords>,
@@ -40,7 +40,7 @@ impl<T> Groupbox<T> {
         window: HWND,
         id: u16,
         initial_state: GroupboxState,
-        state_hook: Option<fn(&T, &mut GroupboxState)>,
+        state_hook: Option<Box<dyn Fn(&T, &mut GroupboxState)>>,
         layout_parent: GenArenaKey,
         layout: &mut Layout,
         fonts: &Fonts,
@@ -196,7 +196,7 @@ impl<T> Groupbox<T> {
     pub fn do_state_hook(&mut self, state: &T, layout: &mut Layout, _fonts: &Fonts) -> bool {
         let mut updated = false;
 
-        if let Some(f) = self.state_hook {
+        if let Some(f) = &self.state_hook {
             let old_state = self.current_state.clone();
             (f)(state, &mut self.current_state);
 

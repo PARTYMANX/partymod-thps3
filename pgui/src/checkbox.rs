@@ -4,8 +4,8 @@ pub struct Checkbox<T> {
     pub(crate) label: String,
     pub(crate) checked: bool,
     pub(crate) enabled: bool,
-    pub(crate) on_toggle: Option<fn(&mut T, bool)>,
-    pub(crate) state_hook: Option<fn(&T, &mut CheckboxState)>,
+    pub(crate) on_toggle: Option<Box<dyn Fn(&mut T, bool)>>,
+    pub(crate) state_hook: Option<Box<dyn Fn(&T, &mut CheckboxState)>>,
     pub(crate) position: Position,
 }
 
@@ -18,8 +18,8 @@ pub struct CheckboxState {
 }
 
 impl<T> Checkbox<T> {
-    pub fn on_toggle(mut self, func: fn(&mut T, bool)) -> Self {
-        self.on_toggle = Some(func);
+    pub fn on_toggle(mut self, func: impl Fn(&mut T, bool) + 'static) -> Self {
+        self.on_toggle = Some(Box::new(func));
 
         if !self.enabled {
             self.enabled = true;
@@ -28,8 +28,8 @@ impl<T> Checkbox<T> {
         self
     }
 
-    pub fn state_hook(mut self, func: fn(&T, &mut CheckboxState)) -> Self {
-        self.state_hook = Some(func);
+    pub fn state_hook(mut self, func: impl Fn(&T, &mut CheckboxState) + 'static) -> Self {
+        self.state_hook = Some(Box::new(func));
         self
     }
 

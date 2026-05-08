@@ -30,8 +30,8 @@ pub struct Dropdown<T> {
     _id: u16,
     option_labels: Vec<HSTRING>,
     current_state: DropdownState,
-    on_selected: Option<fn(&mut T, u32)>,
-    state_hook: Option<fn(&T, &mut DropdownState)>,
+    on_selected: Option<Box<dyn Fn(&mut T, u32)>>,
+    state_hook: Option<Box<dyn Fn(&T, &mut DropdownState)>>,
     layout_node: GenArenaKey,
     coords: Option<Coords>,
     current_scale: f32,
@@ -42,8 +42,8 @@ impl<T> Dropdown<T> {
         window: HWND,
         id: u16,
         initial_state: DropdownState,
-        on_selected: Option<fn(&mut T, u32)>,
-        state_hook: Option<fn(&T, &mut DropdownState)>,
+        on_selected: Option<Box<dyn Fn(&mut T, u32)>>,
+        state_hook: Option<Box<dyn Fn(&T, &mut DropdownState)>>,
         layout_parent: GenArenaKey,
         layout: &mut Layout,
         fonts: &Fonts,
@@ -247,7 +247,7 @@ impl<T> Dropdown<T> {
         _wparam: WPARAM,
         _lparam: LPARAM,
     ) -> Option<LRESULT> {
-        if let Some(f) = self.on_selected {
+        if let Some(f) = &self.on_selected {
             let idx = unsafe { SendMessageW(self.hwnd, CB_GETCURSEL, None, None).0 as u32 };
             self.current_state.selected = idx;
 
@@ -261,7 +261,7 @@ impl<T> Dropdown<T> {
     pub fn do_state_hook(&mut self, state: &T, layout: &mut Layout, fonts: &Fonts) -> bool {
         let mut updated = false;
 
-        if let Some(f) = self.state_hook {
+        if let Some(f) = &self.state_hook {
             let old_state = self.current_state.clone();
             (f)(state, &mut self.current_state);
 

@@ -3,8 +3,8 @@ pub struct Window<T> {
     pub(crate) height: u32,
     pub(crate) title: String,
 
-    pub(crate) state_hook: Option<fn(&T, &mut WindowState)>,
-    pub(crate) post_update: Option<fn(&mut T)>,
+    pub(crate) state_hook: Option<Box<dyn Fn(&T, &mut WindowState)>>,
+    pub(crate) post_update: Option<Box<dyn Fn(&mut T)>>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -31,13 +31,13 @@ impl<T> Window<T> {
         self
     }
 
-    pub fn state_hook(mut self, func: fn(&T, &mut WindowState)) -> Self {
-        self.state_hook = Some(func);
+    pub fn state_hook(mut self, func: impl Fn(&T, &mut WindowState) + 'static) -> Self {
+        self.state_hook = Some(Box::new(func));
         self
     }
 
-    pub fn post_update(mut self, func: fn(&mut T)) -> Self {
-        self.post_update = Some(func);
+    pub fn post_update(mut self, func: impl Fn(&mut T) + 'static) -> Self {
+        self.post_update = Some(Box::new(func));
         self
     }
 }

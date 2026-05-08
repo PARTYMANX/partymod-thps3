@@ -3,7 +3,7 @@ use crate::layout::{HorizontalOffset, Position, Size, VerticalOffset};
 pub struct Text<T> {
     pub(crate) text: String,
     pub(crate) enabled: bool,
-    pub(crate) state_hook: Option<fn(&T, &mut TextState)>,
+    pub(crate) state_hook: Option<Box<dyn Fn(&T, &mut TextState)>>,
     pub(crate) position: Position,
 }
 
@@ -15,8 +15,8 @@ pub struct TextState {
 }
 
 impl<T> Text<T> {
-    pub fn state_hook(mut self, func: fn(&T, &mut TextState)) -> Self {
-        self.state_hook = Some(func);
+    pub fn state_hook(mut self, func: impl Fn(&T, &mut TextState) + 'static) -> Self {
+        self.state_hook = Some(Box::new(func));
         self
     }
 

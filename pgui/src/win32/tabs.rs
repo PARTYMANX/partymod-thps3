@@ -36,7 +36,7 @@ pub struct Tabs<T> {
     current_state: TabsState,
     current_tab: u32,
     brush: Option<HBRUSH>, // TODO: invalidate brush when resizing
-    state_hook: Option<fn(&T, &mut TabsState)>,
+    state_hook: Option<Box<dyn Fn(&T, &mut TabsState)>>,
     outer_layout_node: GenArenaKey,
     inner_layout_node: GenArenaKey,
     coords: Option<Coords>,
@@ -49,7 +49,7 @@ impl<T> Tabs<T> {
         id: u16,
         tabs: &Vec<Tab<T>>,
         initial_state: TabsState,
-        state_hook: Option<fn(&T, &mut TabsState)>,
+        state_hook: Option<Box<dyn Fn(&T, &mut TabsState)>>,
         layout_parent: GenArenaKey,
         layout: &mut Layout,
         fonts: &Fonts,
@@ -288,7 +288,7 @@ impl<T> Tabs<T> {
     pub fn do_state_hook(&mut self, state: &T, layout: &mut Layout, _fonts: &Fonts) -> bool {
         let mut updated = false;
 
-        if let Some(f) = self.state_hook {
+        if let Some(f) = &self.state_hook {
             let old_state = self.current_state.clone();
             (f)(state, &mut self.current_state);
 

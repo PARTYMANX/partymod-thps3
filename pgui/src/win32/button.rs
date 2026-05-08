@@ -29,8 +29,8 @@ pub struct Button<T> {
     _id: u16,
     label: HSTRING,
     current_state: ButtonState,
-    on_pressed: Option<fn(&mut T)>,
-    state_hook: Option<fn(&T, &mut ButtonState)>,
+    on_pressed: Option<Box<dyn Fn(&mut T)>>,
+    state_hook: Option<Box<dyn Fn(&T, &mut ButtonState)>>,
     layout_node: GenArenaKey,
     coords: Option<Coords>,
     current_scale: f32,
@@ -41,8 +41,8 @@ impl<T> Button<T> {
         window: HWND,
         id: u16,
         initial_state: ButtonState,
-        on_pressed: Option<fn(&mut T)>,
-        state_hook: Option<fn(&T, &mut ButtonState)>,
+        on_pressed: Option<Box<dyn Fn(&mut T)>>,
+        state_hook: Option<Box<dyn Fn(&T, &mut ButtonState)>>,
         layout_parent: GenArenaKey,
         layout: &mut Layout,
         fonts: &Fonts,
@@ -223,7 +223,7 @@ impl<T> Button<T> {
         _wparam: WPARAM,
         _lparam: LPARAM,
     ) -> Option<LRESULT> {
-        if let Some(f) = self.on_pressed {
+        if let Some(f) = &self.on_pressed {
             (f)(state);
             Some(LRESULT(0))
         } else {
@@ -234,7 +234,7 @@ impl<T> Button<T> {
     pub fn do_state_hook(&mut self, state: &T, layout: &mut Layout, fonts: &Fonts) -> bool {
         let mut updated = false;
 
-        if let Some(f) = self.state_hook {
+        if let Some(f) = &self.state_hook {
             let old_state = self.current_state.clone();
             (f)(state, &mut self.current_state);
 

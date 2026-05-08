@@ -6,7 +6,7 @@ use crate::{
 pub struct Tabs<T> {
     pub(crate) tabs: Vec<Tab<T>>,
     pub(crate) enabled: bool,
-    pub(crate) state_hook: Option<fn(&T, &mut TabsState)>,
+    pub(crate) state_hook: Option<Box<dyn Fn(&T, &mut TabsState)>>,
     pub(crate) position: Position,
 }
 
@@ -22,8 +22,8 @@ pub struct TabsState {
 }
 
 impl<T> Tabs<T> {
-    pub fn state_hook(mut self, func: fn(&T, &mut TabsState)) -> Self {
-        self.state_hook = Some(func);
+    pub fn state_hook(mut self, func: impl Fn(&T, &mut TabsState) + 'static) -> Self {
+        self.state_hook = Some(Box::new(func));
         self
     }
 

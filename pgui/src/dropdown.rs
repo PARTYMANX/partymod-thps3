@@ -3,8 +3,8 @@ use crate::layout::{HorizontalOffset, Position, Size, VerticalOffset};
 pub struct Dropdown<T> {
     pub(crate) options: Vec<String>,
     pub(crate) enabled: bool,
-    pub(crate) on_select: Option<fn(&mut T, u32)>,
-    pub(crate) state_hook: Option<fn(&T, &mut DropdownState)>,
+    pub(crate) on_select: Option<Box<dyn Fn(&mut T, u32)>>,
+    pub(crate) state_hook: Option<Box<dyn Fn(&T, &mut DropdownState)>>,
     pub(crate) position: Position,
 }
 
@@ -17,8 +17,8 @@ pub struct DropdownState {
 }
 
 impl<T> Dropdown<T> {
-    pub fn on_select(mut self, func: fn(&mut T, u32)) -> Self {
-        self.on_select = Some(func);
+    pub fn on_select(mut self, func: impl Fn(&mut T, u32) + 'static) -> Self {
+        self.on_select = Some(Box::new(func));
 
         if !self.enabled {
             self.enabled = true;
@@ -27,8 +27,8 @@ impl<T> Dropdown<T> {
         self
     }
 
-    pub fn state_hook(mut self, func: fn(&T, &mut DropdownState)) -> Self {
-        self.state_hook = Some(func);
+    pub fn state_hook(mut self, func: impl Fn(&T, &mut DropdownState) + 'static) -> Self {
+        self.state_hook = Some(Box::new(func));
         self
     }
 

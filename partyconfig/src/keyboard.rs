@@ -1,7 +1,7 @@
-use pgui::{component::Component, container::{horizontal, vertical}, groupbox::groupbox, layout::{HorizontalOffset, Size, VerticalOffset}, text::text, textbox::textbox};
+use pgui::{component::Component, container::{horizontal, vertical}, groupbox::groupbox, layout::{HorizontalOffset, Size, VerticalOffset}, text::text, textbox::{TextboxState, textbox}};
 use sdl3::sys::scancode::{self, SDL_Scancode};
 
-use crate::AppState;
+use crate::{AppState, ini::ConfigFile};
 
 struct Keybind {
     display_name: &'static str,
@@ -107,6 +107,39 @@ const KEYBINDS: [Keybind; 19] = [
     },
 ];
 
+pub struct KeyboardState {
+    is_setting_key: Option<usize>,
+    key_binds: Vec<Option<SDL_Scancode>>,
+}
+
+impl KeyboardState {
+    pub fn new(config_file: &ConfigFile) -> Self {
+        let mut key_binds = Vec::with_capacity(KEYBINDS.len());
+
+        for keybind in &KEYBINDS {
+            let default = match keybind.default {
+                None => -1,
+                Some(v) => v.0,
+            };
+
+            let value = config_file.get_config_int("Keybinds", keybind.key, default);
+
+            let scancode = if value == -1 {
+                None
+            } else {
+                Some(SDL_Scancode(value))
+            };
+
+            key_binds.push(scancode);
+        }
+
+        Self {
+            is_setting_key: None,
+            key_binds,
+        }
+    }
+}
+
 fn keybind_row(idx: usize) -> Component<AppState> {
     horizontal(vec![
         text(format!("{}:", KEYBINDS[idx].display_name))
@@ -115,6 +148,28 @@ fn keybind_row(idx: usize) -> Component<AppState> {
         .width(Size::Exact(80))
         .into(),
         textbox("".to_string())
+        .on_focus(move |app_state: &mut AppState, _text| {
+            app_state.keyboard_state.is_setting_key = Some(idx);
+        })
+        .state_hook(move |app_state: &AppState, textbox_state: &mut TextboxState| {
+            let setting_this = match app_state.keyboard_state.is_setting_key {
+                None => false,
+                Some(v) => v == idx,
+            };
+
+            if setting_this {
+                textbox_state.text = "Press a key...".to_string();
+            } else {
+                match app_state.keyboard_state.key_binds[idx] {
+                    Some(v) => {
+                        textbox_state.text = format!("{}", v.0);
+                    },
+                    None => {
+                        textbox_state.text = "Unbound".to_string();
+                    },
+                }
+            }
+        })
         .h_position(HorizontalOffset::AlignRight(0))
         .width(Size::Exact(75))
         .height(Size::Exact(20))

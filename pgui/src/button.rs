@@ -3,8 +3,8 @@ use crate::layout::{HorizontalOffset, Position, Size, VerticalOffset};
 pub struct Button<T> {
     pub(crate) label: String,
     pub(crate) enabled: bool,
-    pub(crate) on_press: Option<fn(&mut T)>,
-    pub(crate) state_hook: Option<fn(&T, &mut ButtonState)>,
+    pub(crate) on_press: Option<Box<dyn Fn(&mut T)>>,
+    pub(crate) state_hook: Option<Box<dyn Fn(&T, &mut ButtonState)>>,
     pub(crate) position: Position,
 }
 
@@ -16,8 +16,8 @@ pub struct ButtonState {
 }
 
 impl<T> Button<T> {
-    pub fn on_press(mut self, func: fn(&mut T)) -> Self {
-        self.on_press = Some(func);
+    pub fn on_press(mut self, func: impl Fn(&mut T) + 'static) -> Self {
+        self.on_press = Some(Box::new(func));
 
         if !self.enabled {
             self.enabled = true;
@@ -26,8 +26,8 @@ impl<T> Button<T> {
         self
     }
 
-    pub fn state_hook(mut self, func: fn(&T, &mut ButtonState)) -> Self {
-        self.state_hook = Some(func);
+    pub fn state_hook(mut self, func: impl Fn(&T, &mut ButtonState) + 'static) -> Self {
+        self.state_hook = Some(Box::new(func));
         self
     }
 

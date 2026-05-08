@@ -28,10 +28,10 @@ pub struct Textbox<T> {
     hwnd: HWND,
     _id: u16,
     current_state: TextboxState,
-    on_focused: Option<fn(&mut T, &String)>,
-    on_unfocused: Option<fn(&mut T, &String)>,
-    on_changed: Option<fn(&mut T, &String)>,
-    state_hook: Option<fn(&T, &mut TextboxState)>,
+    on_focused: Option<Box<dyn Fn(&mut T, &String)>>,
+    on_unfocused: Option<Box<dyn Fn(&mut T, &String)>>,
+    on_changed: Option<Box<dyn Fn(&mut T, &String)>>,
+    state_hook: Option<Box<dyn Fn(&T, &mut TextboxState)>>,
     layout_node: GenArenaKey,
     coords: Option<Coords>,
     current_scale: f32,
@@ -42,10 +42,10 @@ impl<T> Textbox<T> {
         window: HWND,
         id: u16,
         initial_state: TextboxState,
-        on_focused: Option<fn(&mut T, &String)>,
-        on_unfocused: Option<fn(&mut T, &String)>,
-        on_changed: Option<fn(&mut T, &String)>,
-        state_hook: Option<fn(&T, &mut TextboxState)>,
+        on_focused: Option<Box<dyn Fn(&mut T, &String)>>,
+        on_unfocused: Option<Box<dyn Fn(&mut T, &String)>>,
+        on_changed: Option<Box<dyn Fn(&mut T, &String)>>,
+        state_hook: Option<Box<dyn Fn(&T, &mut TextboxState)>>,
         layout_parent: GenArenaKey,
         layout: &mut Layout,
         fonts: &Fonts,
@@ -241,7 +241,7 @@ impl<T> Textbox<T> {
         _wparam: WPARAM,
         _lparam: LPARAM,
     ) -> Option<LRESULT> {
-        if let Some(f) = self.on_focused {
+        if let Some(f) = &self.on_focused {
             self.current_state.text = self.get_text_string();
             (f)(state, &self.current_state.text);
             Some(LRESULT(0))
@@ -258,7 +258,7 @@ impl<T> Textbox<T> {
         _wparam: WPARAM,
         _lparam: LPARAM,
     ) -> Option<LRESULT> {
-        if let Some(f) = self.on_unfocused {
+        if let Some(f) = &self.on_unfocused {
             self.current_state.text = self.get_text_string();
             (f)(state, &self.current_state.text);
             Some(LRESULT(0))
@@ -275,7 +275,7 @@ impl<T> Textbox<T> {
         _wparam: WPARAM,
         _lparam: LPARAM,
     ) -> Option<LRESULT> {
-        if let Some(f) = self.on_changed {
+        if let Some(f) = &self.on_changed {
             self.current_state.text = self.get_text_string();
             (f)(state, &self.current_state.text);
             Some(LRESULT(0))
@@ -287,7 +287,7 @@ impl<T> Textbox<T> {
     pub fn do_state_hook(&mut self, state: &T, _layout: &mut Layout, _fonts: &Fonts) -> bool {
         let mut updated = false;
 
-        if let Some(f) = self.state_hook {
+        if let Some(f) = &self.state_hook {
             let old_state = self.current_state.clone();
             (f)(state, &mut self.current_state);
 

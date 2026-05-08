@@ -29,8 +29,8 @@ pub struct Checkbox<T> {
     _id: u16,
     label: HSTRING,
     current_state: CheckboxState,
-    on_toggled: Option<fn(&mut T, bool)>,
-    state_hook: Option<fn(&T, &mut CheckboxState)>,
+    on_toggled: Option<Box<dyn Fn(&mut T, bool)>>,
+    state_hook: Option<Box<dyn Fn(&T, &mut CheckboxState)>>,
     layout_node: GenArenaKey,
     coords: Option<Coords>,
     current_scale: f32,
@@ -41,8 +41,8 @@ impl<T> Checkbox<T> {
         window: HWND,
         id: u16,
         initial_state: CheckboxState,
-        on_toggled: Option<fn(&mut T, bool)>,
-        state_hook: Option<fn(&T, &mut CheckboxState)>,
+        on_toggled: Option<Box<dyn Fn(&mut T, bool)>>,
+        state_hook: Option<Box<dyn Fn(&T, &mut CheckboxState)>>,
         layout_parent: GenArenaKey,
         layout: &mut Layout,
         fonts: &Fonts,
@@ -245,7 +245,7 @@ impl<T> Checkbox<T> {
             }
         }
 
-        if let Some(f) = self.on_toggled {
+        if let Some(f) = &self.on_toggled {
             (f)(state, self.current_state.checked);
             Some(LRESULT(0))
         } else {
@@ -256,7 +256,7 @@ impl<T> Checkbox<T> {
     pub fn do_state_hook(&mut self, state: &T, layout: &mut Layout, fonts: &Fonts) -> bool {
         let mut updated = false;
 
-        if let Some(f) = self.state_hook {
+        if let Some(f) = &self.state_hook {
             let old_state = self.current_state.clone();
             (f)(state, &mut self.current_state);
 

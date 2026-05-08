@@ -12,6 +12,7 @@ struct AppState {
     pub resolution_info: general::ResolutionInfo,
 
     pub general_state: general::GeneralState,
+    pub keyboard_state: keyboard::KeyboardState,
     should_quit: bool,
 }
 
@@ -21,11 +22,13 @@ impl AppState {
         let resolution_info = general::ResolutionInfo::init();
 
         let general_state = general::GeneralState::new(&config_file, &resolution_info);
+        let keyboard_state = keyboard::KeyboardState::new(&config_file);
 
         Self {
             config_file,
             resolution_info,
             general_state,
+            keyboard_state,
             should_quit: false,
         }
     }
@@ -125,8 +128,8 @@ fn main() {
         .into(),
         window("PARTYMOD Configuration".to_string())
         .dimensions(400, 450)
-        .state_hook(|st, window_state| {
-            window_state.should_quit = st.should_quit;
+        .state_hook(|app_state: &AppState, window_state| {
+            window_state.should_quit = app_state.should_quit;
         }),
     );
 }

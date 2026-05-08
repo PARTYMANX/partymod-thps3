@@ -50,8 +50,8 @@ pub struct Window<T> {
     scale: f32,
     state: WindowState,
 
-    state_hook: Option<fn(&T, &mut WindowState)>,
-    post_update: Option<fn(&mut T)>,
+    state_hook: Option<Box<dyn Fn(&T, &mut WindowState)>>,
+    post_update: Option<Box<dyn Fn(&mut T)>>,
 
     components: Vec<Component<T>>,
     component_tree: GenArena<ComponentTreeNode>,
@@ -68,8 +68,8 @@ impl<T> Window<T> {
         width: u32,
         height: u32,
         title: String,
-        state_hook: Option<fn(&T, &mut WindowState)>,
-        post_update: Option<fn(&mut T)>,
+        state_hook: Option<Box<dyn Fn(&T, &mut WindowState)>>,
+        post_update: Option<Box<dyn Fn(&mut T)>>,
     ) -> Self {
         let title_hstring = HSTRING::from(title.clone());
 
@@ -899,7 +899,7 @@ impl<T> Window<T> {
     }
 
     pub fn do_window_state_hook(&mut self, state: &T) -> bool {
-        if let Some(f) = self.state_hook {
+        if let Some(f) = &self.state_hook {
             let old_state = self.state.clone();
 
             (f)(state, &mut self.state);
@@ -930,7 +930,7 @@ impl<T> Window<T> {
     }
 
     pub fn run_post_update(&mut self, state: &mut T) {
-        if let Some(f) = self.post_update {
+        if let Some(f) = &self.post_update {
             (f)(state);
 
             self.run_state_hooks(state);

@@ -7,7 +7,7 @@ pub struct Groupbox<T> {
     pub(crate) label: String,
     pub(crate) child: Box<Component<T>>,
     pub(crate) enabled: bool,
-    pub(crate) state_hook: Option<fn(&T, &mut GroupboxState)>,
+    pub(crate) state_hook: Option<Box<dyn Fn(&T, &mut GroupboxState)>>,
     pub(crate) position: Position,
 }
 
@@ -19,8 +19,8 @@ pub struct GroupboxState {
 }
 
 impl<T> Groupbox<T> {
-    pub fn state_hook(mut self, func: fn(&T, &mut GroupboxState)) -> Self {
-        self.state_hook = Some(func);
+    pub fn state_hook(mut self, func: impl Fn(&T, &mut GroupboxState) + 'static) -> Self {
+        self.state_hook = Some(Box::new(func));
         self
     }
 

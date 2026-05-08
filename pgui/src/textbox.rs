@@ -3,10 +3,10 @@ use crate::layout::{HorizontalOffset, Position, Size, VerticalOffset};
 pub struct Textbox<T> {
     pub(crate) initial: String,
     pub(crate) enabled: bool,
-    pub(crate) on_focus: Option<fn(&mut T, &String)>,
-    pub(crate) on_unfocus: Option<fn(&mut T, &String)>,
-    pub(crate) on_change: Option<fn(&mut T, &String)>,
-    pub(crate) state_hook: Option<fn(&T, &mut TextboxState)>,
+    pub(crate) on_focus: Option<Box<dyn Fn(&mut T, &String)>>,
+    pub(crate) on_unfocus: Option<Box<dyn Fn(&mut T, &String)>>,
+    pub(crate) on_change: Option<Box<dyn Fn(&mut T, &String)>>,
+    pub(crate) state_hook: Option<Box<dyn Fn(&T, &mut TextboxState)>>,
     pub(crate) position: Position,
 }
 
@@ -18,8 +18,8 @@ pub struct TextboxState {
 }
 
 impl<T> Textbox<T> {
-    pub fn on_focus(mut self, func: fn(&mut T, &String)) -> Self {
-        self.on_focus = Some(func);
+    pub fn on_focus(mut self, func: impl Fn(&mut T, &String) + 'static) -> Self {
+        self.on_focus = Some(Box::new(func));
 
         if !self.enabled {
             self.enabled = true;
@@ -28,8 +28,8 @@ impl<T> Textbox<T> {
         self
     }
 
-    pub fn on_unfocus(mut self, func: fn(&mut T, &String)) -> Self {
-        self.on_unfocus = Some(func);
+    pub fn on_unfocus(mut self, func: impl Fn(&mut T, &String) + 'static) -> Self {
+        self.on_unfocus = Some(Box::new(func));
 
         if !self.enabled {
             self.enabled = true;
@@ -38,8 +38,8 @@ impl<T> Textbox<T> {
         self
     }
 
-    pub fn on_change(mut self, func: fn(&mut T, &String)) -> Self {
-        self.on_change = Some(func);
+    pub fn on_change(mut self, func: impl Fn(&mut T, &String) + 'static) -> Self {
+        self.on_change = Some(Box::new(func));
 
         if !self.enabled {
             self.enabled = true;
@@ -48,8 +48,8 @@ impl<T> Textbox<T> {
         self
     }
 
-    pub fn state_hook(mut self, func: fn(&T, &mut TextboxState)) -> Self {
-        self.state_hook = Some(func);
+    pub fn state_hook(mut self, func: impl Fn(&T, &mut TextboxState) + 'static) -> Self {
+        self.state_hook = Some(Box::new(func));
         self
     }
 
