@@ -4,6 +4,7 @@ pub struct ConfigFile {
     filename: HSTRING,
 }
 
+#[allow(unused)]
 impl ConfigFile {
     pub fn new(exe_path: &std::path::Path) -> Self {
         let filename = HSTRING::from(exe_path);

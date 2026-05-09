@@ -11,7 +11,7 @@ use windows::{
             Controls::{NMHDR, TCM_GETCURSEL, TCN_SELCHANGE, WM_CTLCOLOR},
             HiDpi::GetDpiForWindow,
             WindowsAndMessaging::{
-                CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, EN_CHANGE, EN_KILLFOCUS, EN_SETFOCUS, GetClientRect, GetWindowRect, MoveWindow, PostQuitMessage, SendMessageW, SetWindowTextW, WINDOW_EX_STYLE, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_NOTIFY, WM_PAINT, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE
+                CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, EN_CHANGE, EN_KILLFOCUS, EN_SETFOCUS, GetClientRect, GetWindowRect, MoveWindow, PostQuitMessage, SHOW_WINDOW_CMD, SendMessageW, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_NOTIFY, WM_PAINT, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE
             },
         },
     },
@@ -78,7 +78,7 @@ impl<T> Window<T> {
                 WINDOW_EX_STYLE::default(),
                 window_class,
                 &title_hstring,
-                WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE,
+                WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
                 width as i32,
@@ -175,6 +175,10 @@ impl<T> Window<T> {
         };
 
         result.rescale(None);
+
+        unsafe {
+            let _ = ShowWindow(window, SHOW_WINDOW_CMD(1));
+        }
 
         result
     }

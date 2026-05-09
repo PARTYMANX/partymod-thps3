@@ -1,6 +1,6 @@
 use pgui::{app, button::button, container::{container, horizontal, vertical}, layout::{HorizontalOffset, Size, VerticalOffset}, tabs::{Tab, tabs}, window::window};
 
-use crate::general::GeneralState;
+use crate::{general::GeneralState, keyboard::KeyboardState};
 
 mod general;
 mod keyboard;
@@ -10,6 +10,7 @@ mod ini;
 struct AppState {
     pub config_file: ini::ConfigFile,
     pub resolution_info: general::ResolutionInfo,
+    pub sdl_key_context: keyboard::SDLKeyContext,
 
     pub general_state: general::GeneralState,
     pub keyboard_state: keyboard::KeyboardState,
@@ -20,6 +21,7 @@ impl AppState {
     fn new(config_path: &std::path::Path) -> Self {
         let config_file = ini::ConfigFile::new(config_path);
         let resolution_info = general::ResolutionInfo::init();
+        let sdl_key_context = keyboard::SDLKeyContext::new();
 
         let general_state = general::GeneralState::new(&config_file, &resolution_info);
         let keyboard_state = keyboard::KeyboardState::new(&config_file);
@@ -27,6 +29,7 @@ impl AppState {
         Self {
             config_file,
             resolution_info,
+            sdl_key_context,
             general_state,
             keyboard_state,
             should_quit: false,
@@ -35,6 +38,7 @@ impl AppState {
 
     fn save_settings(&self) {
         self.general_state.save(&self.config_file, &self.resolution_info);
+        self.keyboard_state.save(&self.config_file);
     }
 
     fn quit(&mut self) {
@@ -94,6 +98,7 @@ fn main() {
                     button("Restore Defaults".to_string())
                     .on_press(|app_state: &mut AppState| {
                         app_state.general_state = GeneralState::default();
+                        app_state.keyboard_state = KeyboardState::default();
                     })
                     .height(Size::Exact(26))
                     .into(),
@@ -127,9 +132,12 @@ fn main() {
         ])
         .into(),
         window("PARTYMOD Configuration".to_string())
-        .dimensions(400, 450)
+        .dimensions(window_width, window_height)
         .state_hook(|app_state: &AppState, window_state| {
             window_state.should_quit = app_state.should_quit;
+        })
+        .post_update(|app_state: &mut AppState| {
+            app_state.sdl_key_context.do_key_bind(&mut app_state.keyboard_state);
         }),
     );
 }

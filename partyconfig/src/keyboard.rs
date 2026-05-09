@@ -1,54 +1,54 @@
 use pgui::{component::Component, container::{horizontal, vertical}, groupbox::groupbox, layout::{HorizontalOffset, Size, VerticalOffset}, text::text, textbox::{TextboxState, textbox}};
-use sdl3::sys::scancode::{self, SDL_Scancode};
+use sdl3::sys::keycode::SDL_KMOD_NONE;
 
 use crate::{AppState, ini::ConfigFile};
 
 struct Keybind {
     display_name: &'static str,
     key: &'static str,
-    default: Option<SDL_Scancode>,
+    default: Option<sdl3::keyboard::Scancode>,
 }
 
 const KEYBINDS: [Keybind; 19] = [
     Keybind {
         display_name: "Ollie",
         key: "Ollie",
-        default: Some(scancode::SDL_SCANCODE_KP_2),
+        default: Some(sdl3::keyboard::Scancode::Kp2),
     },
     Keybind {
         display_name: "Grab",
         key: "Grab",
-        default: Some(scancode::SDL_SCANCODE_KP_2),
+        default: Some(sdl3::keyboard::Scancode::Kp6),
     },
     Keybind {
         display_name: "Flip",
         key: "Flip",
-        default: Some(scancode::SDL_SCANCODE_KP_2),
+        default: Some(sdl3::keyboard::Scancode::Kp4),
     },
     Keybind {
         display_name: "Grind",
         key: "Grind",
-        default: Some(scancode::SDL_SCANCODE_KP_2),
+        default: Some(sdl3::keyboard::Scancode::Kp8),
     },
     Keybind {
         display_name: "Spin Left",
         key: "SpinLeft",
-        default: Some(scancode::SDL_SCANCODE_KP_2),
+        default: Some(sdl3::keyboard::Scancode::Kp1),
     },
     Keybind {
         display_name: "Spin Right",
         key: "SpinRight",
-        default: Some(scancode::SDL_SCANCODE_KP_2),
+        default: Some(sdl3::keyboard::Scancode::Kp3),
     },
     Keybind {
         display_name: "Nollie",
         key: "Nollie",
-        default: Some(scancode::SDL_SCANCODE_KP_2),
+        default: Some(sdl3::keyboard::Scancode::Kp7),
     },
     Keybind {
         display_name: "Switch",
         key: "Switch",
-        default: Some(scancode::SDL_SCANCODE_KP_2),
+        default: Some(sdl3::keyboard::Scancode::Kp9),
     },
     Keybind {
         display_name: "Pause",
@@ -58,47 +58,47 @@ const KEYBINDS: [Keybind; 19] = [
     Keybind {
         display_name: "Forward",
         key: "Forward",
-        default: None,
+        default: Some(sdl3::keyboard::Scancode::W),
     },
     Keybind {
         display_name: "Backward",
         key: "Backward",
-        default: None,
+        default: Some(sdl3::keyboard::Scancode::S),
     },
     Keybind {
         display_name: "Left",
         key: "Left",
-        default: None,
+        default: Some(sdl3::keyboard::Scancode::A),
     },
     Keybind {
         display_name: "Right",
         key: "Right",
-        default: None,
+        default: Some(sdl3::keyboard::Scancode::D),
     },
     Keybind {
         display_name: "Camera Up",
         key: "CameraUp",
-        default: None,
+        default: Some(sdl3::keyboard::Scancode::I),
     },
     Keybind {
         display_name: "Camera Down",
         key: "CameraDown",
-        default: None,
+        default: Some(sdl3::keyboard::Scancode::K),
     },
     Keybind {
         display_name: "Camera Left",
         key: "CameraLeft",
-        default: None,
+        default: Some(sdl3::keyboard::Scancode::J),
     },
     Keybind {
         display_name: "Camera Right",
         key: "CameraRight",
-        default: None,
+        default: Some(sdl3::keyboard::Scancode::L),
     },
     Keybind {
         display_name: "View Toggle",
         key: "ViewToggle",
-        default: None,
+        default: Some(sdl3::keyboard::Scancode::Grave),
     },
     Keybind {
         display_name: "Swivel Lock",
@@ -109,7 +109,7 @@ const KEYBINDS: [Keybind; 19] = [
 
 pub struct KeyboardState {
     is_setting_key: Option<usize>,
-    key_binds: Vec<Option<SDL_Scancode>>,
+    key_binds: Vec<Option<sdl3::keyboard::Scancode>>,
 }
 
 impl KeyboardState {
@@ -119,7 +119,7 @@ impl KeyboardState {
         for keybind in &KEYBINDS {
             let default = match keybind.default {
                 None => -1,
-                Some(v) => v.0,
+                Some(v) => v.to_i32(),
             };
 
             let value = config_file.get_config_int("Keybinds", keybind.key, default);
@@ -127,10 +127,36 @@ impl KeyboardState {
             let scancode = if value == -1 {
                 None
             } else {
-                Some(SDL_Scancode(value))
+                sdl3::keyboard::Scancode::from_i32(value)
             };
 
             key_binds.push(scancode);
+        }
+
+        Self {
+            is_setting_key: None,
+            key_binds,
+        }
+    }
+
+    pub fn save(&self, config_file: &ConfigFile) {
+        for (idx, keybind) in KEYBINDS.iter().enumerate() {
+            let value = match self.key_binds[idx] {
+                Some(v) => v.to_i32(),
+                None => -1,
+            };
+
+            config_file.set_config_int("Keybinds", keybind.key, value);
+        }
+    }
+}
+
+impl Default for KeyboardState {
+    fn default() -> Self {
+        let mut key_binds = Vec::with_capacity(KEYBINDS.len());
+
+        for keybind in &KEYBINDS {
+            key_binds.push(keybind.default);
         }
 
         Self {
@@ -162,7 +188,7 @@ fn keybind_row(idx: usize) -> Component<AppState> {
             } else {
                 match app_state.keyboard_state.key_binds[idx] {
                     Some(v) => {
-                        textbox_state.text = format!("{}", v.0);
+                        textbox_state.text = format!("{}", app_state.sdl_key_context.get_key_name(v));
                     },
                     None => {
                         textbox_state.text = "Unbound".to_string();
@@ -237,4 +263,81 @@ pub fn keyboard_page(width: u32, height: u32) -> Component<AppState> {
         .into()
     ])
     .into()
+}
+
+pub struct SDLKeyContext {
+    context: sdl3::Sdl,
+}
+
+impl SDLKeyContext {
+    pub fn new() -> Self {
+        let context = sdl3::init().unwrap();
+        //let video_subsystem = context.video().unwrap();
+
+        // we create this window to populate key names
+        /*let _temp_window = video_subsystem.window(
+            "you're not supposed to see this...",
+            0,
+            0,
+        ).hidden();*/
+
+        Self {
+            context,
+        }
+    }
+
+    fn get_key_name(&self, scancode: sdl3::keyboard::Scancode) -> String {
+        let key = sdl3::keyboard::Keycode::from_scancode(scancode, SDL_KMOD_NONE, false);
+
+        match key {
+            Some(v) => v.name(),
+            None => "Unknown".to_string(),
+        }
+    }
+
+    pub fn do_key_bind(&self, keyboard_state: &mut KeyboardState) {
+        let idx = match keyboard_state.is_setting_key {
+            Some(v) => v,
+            None => return,
+        };
+
+        let video_subsystem = self.context.video().unwrap();
+
+        let _window = video_subsystem.window(
+            "Press Key...",
+            1,
+            1,
+        ).input_grabbed()
+        .borderless()
+        .build().unwrap();
+
+        let mut event_pump = self.context.event_pump().unwrap();
+
+        'inputloop: loop {
+            for event in event_pump.poll_iter() {
+                match event {
+                    sdl3::event::Event::KeyDown { scancode, .. } => {
+                        keyboard_state.key_binds[idx] = scancode;
+                        break 'inputloop;
+                    },
+                    sdl3::event::Event::Quit { .. } => {
+                        break 'inputloop;
+                    },
+                    sdl3::event::Event::Window { win_event, .. } => {
+                        match win_event {
+                            sdl3::event::WindowEvent::Hidden |
+                            sdl3::event::WindowEvent::FocusLost |
+                            sdl3::event::WindowEvent::Minimized => {
+                                break 'inputloop;
+                            }
+                            _ => {}
+                        }
+                    },
+                    _ => {}
+                }
+            }
+        }
+
+        keyboard_state.is_setting_key = None;
+    }
 }
