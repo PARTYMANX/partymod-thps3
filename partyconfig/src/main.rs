@@ -1,6 +1,6 @@
 use pgui::{app, button::button, container::{container, horizontal, vertical}, layout::{HorizontalOffset, Size, VerticalOffset}, tabs::{Tab, tabs}, window::window};
 
-use crate::{general::GeneralState, keyboard::KeyboardState};
+use crate::{gamepad::GamepadState, general::GeneralState, keyboard::KeyboardState};
 
 mod general;
 mod keyboard;
@@ -14,6 +14,7 @@ struct AppState {
 
     pub general_state: general::GeneralState,
     pub keyboard_state: keyboard::KeyboardState,
+    pub gamepad_state: gamepad::GamepadState,
     should_quit: bool,
 }
 
@@ -25,6 +26,7 @@ impl AppState {
 
         let general_state = general::GeneralState::new(&config_file, &resolution_info);
         let keyboard_state = keyboard::KeyboardState::new(&config_file);
+        let gamepad_state = gamepad::GamepadState::new(&config_file);
 
         Self {
             config_file,
@@ -32,6 +34,7 @@ impl AppState {
             sdl_key_context,
             general_state,
             keyboard_state,
+            gamepad_state,
             should_quit: false,
         }
     }
@@ -39,6 +42,7 @@ impl AppState {
     fn save_settings(&self) {
         self.general_state.save(&self.config_file, &self.resolution_info);
         self.keyboard_state.save(&self.config_file);
+        self.gamepad_state.save(&self.config_file);
     }
 
     fn quit(&mut self) {
@@ -99,6 +103,7 @@ fn main() {
                     .on_press(|app_state: &mut AppState| {
                         app_state.general_state = GeneralState::default();
                         app_state.keyboard_state = KeyboardState::default();
+                        app_state.gamepad_state = GamepadState::default();
                     })
                     .height(Size::Exact(26))
                     .into(),
