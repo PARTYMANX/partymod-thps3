@@ -11,7 +11,7 @@ use windows::{
             Controls::{NMHDR, TCM_GETCURSEL, TCN_SELCHANGE, WM_CTLCOLOR},
             HiDpi::GetDpiForWindow,
             WindowsAndMessaging::{
-                CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, EN_CHANGE, EN_KILLFOCUS, EN_SETFOCUS, GetClientRect, GetWindowRect, MoveWindow, PostQuitMessage, SHOW_WINDOW_CMD, SendMessageW, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_NOTIFY, WM_PAINT, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_VISIBLE
+                CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, EN_CHANGE, EN_KILLFOCUS, EN_SETFOCUS, GetClientRect, GetWindowRect, MoveWindow, PostQuitMessage, SHOW_WINDOW_CMD, SendMessageW, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_NOTIFY, WM_PAINT, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU
             },
         },
     },

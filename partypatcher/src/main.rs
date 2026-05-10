@@ -11,7 +11,7 @@ fn main() -> PatcherResult {
             checksums: vec![
                 ChecksumSet {
                     input: 0xdda4822f,
-                    output: 0xbb5e5c48,
+                    output: 0x69714fe1,
                 },
                 ChecksumSet {
                     input: 0x045925e8,
