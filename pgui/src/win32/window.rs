@@ -11,7 +11,11 @@ use windows::{
             Controls::{NMHDR, TCM_GETCURSEL, TCN_SELCHANGE, WM_CTLCOLOR},
             HiDpi::GetDpiForWindow,
             WindowsAndMessaging::{
-                CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, EN_CHANGE, EN_KILLFOCUS, EN_SETFOCUS, GetClientRect, GetWindowRect, MoveWindow, PostQuitMessage, SHOW_WINDOW_CMD, SendMessageW, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE, WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED, WM_NOTIFY, WM_PAINT, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU
+                CW_USEDEFAULT, CreateWindowExW, DefWindowProcW, EN_CHANGE, EN_KILLFOCUS,
+                EN_SETFOCUS, GetClientRect, GetWindowRect, MoveWindow, PostQuitMessage,
+                SHOW_WINDOW_CMD, SendMessageW, SetWindowTextW, ShowWindow, WINDOW_EX_STYLE,
+                WM_COMMAND, WM_CTLCOLORBTN, WM_CTLCOLORSTATIC, WM_DESTROY, WM_DPICHANGED,
+                WM_NOTIFY, WM_PAINT, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU,
             },
         },
     },
@@ -31,7 +35,8 @@ use crate::{
     win32::{
         button::Button, checkbox::Checkbox, dropdown::Dropdown, font::Fonts, groupbox::Groupbox,
         tabs::Tabs, text::Text, textbox::Textbox,
-    }, window::WindowState,
+    },
+    window::WindowState,
 };
 
 pub enum Component<T> {
@@ -160,7 +165,7 @@ impl<T> Window<T> {
                 width,
                 height,
                 title,
-                should_quit: false
+                should_quit: false,
             },
 
             state_hook,
@@ -913,7 +918,7 @@ impl<T> Window<T> {
                 unsafe {
                     let _ = SetWindowTextW(self.hwnd, &title_hstring);
                 }
-                
+
                 if self.state.should_quit {
                     unsafe {
                         PostQuitMessage(0);

@@ -303,7 +303,7 @@ impl<T> Checkbox<T> {
                 updated = true;
             }
         }
-        
+
         updated
     }
 }

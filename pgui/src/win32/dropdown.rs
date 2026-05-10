@@ -298,8 +298,8 @@ impl<T> Dropdown<T> {
 
                 updated = true;
             }
-        } 
-        
+        }
+
         updated
     }
 }

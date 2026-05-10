@@ -1,5 +1,12 @@
 use partymod_config::KEYBINDS;
-use pgui::{component::Component, container::{horizontal, vertical}, groupbox::groupbox, layout::{HorizontalOffset, Size, VerticalOffset}, text::text, textbox::{TextboxState, textbox}};
+use pgui::{
+    component::Component,
+    container::{horizontal, vertical},
+    groupbox::groupbox,
+    layout::{HorizontalOffset, Size, VerticalOffset},
+    text::text,
+    textbox::{TextboxState, textbox},
+};
 use sdl3::sys::keycode::SDL_KMOD_NONE;
 
 use crate::{AppState, ini::ConfigFile};
@@ -66,37 +73,40 @@ impl Default for KeyboardState {
 fn keybind_row(idx: usize) -> Component<AppState> {
     horizontal(vec![
         text(format!("{}:", KEYBINDS[idx].display_name))
-        .v_position(VerticalOffset::AlignTop(2))
-        .height(Size::Exact(16))
-        .width(Size::Exact(80))
-        .into(),
+            .v_position(VerticalOffset::AlignTop(2))
+            .height(Size::Exact(16))
+            .width(Size::Exact(80))
+            .into(),
         textbox("".to_string())
-        .on_focus(move |app_state: &mut AppState, _text| {
-            app_state.keyboard_state.is_setting_key = Some(idx);
-        })
-        .state_hook(move |app_state: &AppState, textbox_state: &mut TextboxState| {
-            let setting_this = match app_state.keyboard_state.is_setting_key {
-                None => false,
-                Some(v) => v == idx,
-            };
+            .on_focus(move |app_state: &mut AppState, _text| {
+                app_state.keyboard_state.is_setting_key = Some(idx);
+            })
+            .state_hook(
+                move |app_state: &AppState, textbox_state: &mut TextboxState| {
+                    let setting_this = match app_state.keyboard_state.is_setting_key {
+                        None => false,
+                        Some(v) => v == idx,
+                    };
 
-            if setting_this {
-                textbox_state.text = "Press a key...".to_string();
-            } else {
-                match app_state.keyboard_state.key_binds[idx] {
-                    Some(v) => {
-                        textbox_state.text = format!("{}", app_state.sdl_key_context.get_key_name(v));
-                    },
-                    None => {
-                        textbox_state.text = "Unbound".to_string();
-                    },
-                }
-            }
-        })
-        .h_position(HorizontalOffset::AlignRight(0))
-        .width(Size::Exact(75))
-        .height(Size::Exact(20))
-        .into(),
+                    if setting_this {
+                        textbox_state.text = "Press a key...".to_string();
+                    } else {
+                        match app_state.keyboard_state.key_binds[idx] {
+                            Some(v) => {
+                                textbox_state.text =
+                                    format!("{}", app_state.sdl_key_context.get_key_name(v));
+                            }
+                            None => {
+                                textbox_state.text = "Unbound".to_string();
+                            }
+                        }
+                    }
+                },
+            )
+            .h_position(HorizontalOffset::AlignRight(0))
+            .width(Size::Exact(75))
+            .height(Size::Exact(20))
+            .into(),
     ])
     .into()
 }
@@ -118,7 +128,7 @@ pub fn keyboard_page(width: u32, height: u32) -> Component<AppState> {
             ])
             .v_position(VerticalOffset::AlignTop(8))
             .spacing(18)
-            .into()
+            .into(),
         )
         .width(Size::Exact(width / 2))
         .height(Size::Exact(height))
@@ -134,7 +144,7 @@ pub fn keyboard_page(width: u32, height: u32) -> Component<AppState> {
                 ])
                 .v_position(VerticalOffset::AlignTop(8))
                 .spacing(10)
-                .into()
+                .into(),
             )
             .width(Size::Exact(width / 2))
             .height(Size::Exact((height as f32 * (13.0 / 32.0)) as u32))
@@ -151,13 +161,13 @@ pub fn keyboard_page(width: u32, height: u32) -> Component<AppState> {
                 ])
                 .v_position(VerticalOffset::AlignTop(8))
                 .spacing(12)
-                .into()
+                .into(),
             )
             .width(Size::Exact(width / 2))
             .height(Size::Exact((height as f32 * (19.0 / 32.0)) as u32))
             .into(),
         ])
-        .into()
+        .into(),
     ])
     .into()
 }
@@ -178,9 +188,7 @@ impl SDLKeyContext {
             0,
         ).hidden();*/
 
-        Self {
-            context,
-        }
+        Self { context }
     }
 
     fn get_key_name(&self, scancode: sdl3::keyboard::Scancode) -> String {
@@ -200,13 +208,12 @@ impl SDLKeyContext {
 
         let video_subsystem = self.context.video().unwrap();
 
-        let _window = video_subsystem.window(
-            "Press Key...",
-            1,
-            1,
-        ).input_grabbed()
-        .borderless()
-        .build().unwrap();
+        let _window = video_subsystem
+            .window("Press Key...", 1, 1)
+            .input_grabbed()
+            .borderless()
+            .build()
+            .unwrap();
 
         let mut event_pump = self.context.event_pump().unwrap();
 
@@ -216,19 +223,17 @@ impl SDLKeyContext {
                     sdl3::event::Event::KeyDown { scancode, .. } => {
                         keyboard_state.key_binds[idx] = scancode;
                         break 'inputloop;
-                    },
+                    }
                     sdl3::event::Event::Quit { .. } => {
                         break 'inputloop;
-                    },
-                    sdl3::event::Event::Window { win_event, .. } => {
-                        match win_event {
-                            sdl3::event::WindowEvent::Hidden |
-                            sdl3::event::WindowEvent::FocusLost |
-                            sdl3::event::WindowEvent::Minimized => {
-                                break 'inputloop;
-                            }
-                            _ => {}
+                    }
+                    sdl3::event::Event::Window { win_event, .. } => match win_event {
+                        sdl3::event::WindowEvent::Hidden
+                        | sdl3::event::WindowEvent::FocusLost
+                        | sdl3::event::WindowEvent::Minimized => {
+                            break 'inputloop;
                         }
+                        _ => {}
                     },
                     _ => {}
                 }

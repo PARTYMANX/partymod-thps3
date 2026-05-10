@@ -1,6 +1,13 @@
 use partymod_config::GAMEPAD_BINDS;
 use partymod_config_common::{BindType, Button, Stick};
-use pgui::{component::Component, container::{horizontal, vertical}, dropdown::dropdown, groupbox::groupbox, layout::{Size, VerticalOffset}, text::text};
+use pgui::{
+    component::Component,
+    container::{horizontal, vertical},
+    dropdown::dropdown,
+    groupbox::groupbox,
+    layout::{Size, VerticalOffset},
+    text::text,
+};
 
 use crate::{AppState, ini::ConfigFile};
 
@@ -55,51 +62,14 @@ const BUTTON_VALUES: [Option<Button>; 22] = [
 ];
 
 const BUTTON_VALUE_REVERSE: [u32; 27] = [
-    1,
-    2,
-    3,
-    4,
-    16,
-    0,
-    15,
-    13,
-    14,
-    9,
-    10,
-    5,
-    6,
-    7,
-    8,
-    0,
-    18,
-    17,
-    20,
-    19,
-    21,
-    12,
-    11,
-    0,
-    0,
-    0,
-    0,
+    1, 2, 3, 4, 16, 0, 15, 13, 14, 9, 10, 5, 6, 7, 8, 0, 18, 17, 20, 19, 21, 12, 11, 0, 0, 0, 0,
 ];
 
-const STICK_STRINGS: [&str; 3] = [
-    "Unbound",
-    "Left Stick",
-    "Right Stick",
-];
+const STICK_STRINGS: [&str; 3] = ["Unbound", "Left Stick", "Right Stick"];
 
-const STICK_VALUES: [Option<Stick>; 3] = [
-    None,
-    Some(Stick::Left),
-    Some(Stick::Right),
-];
+const STICK_VALUES: [Option<Stick>; 3] = [None, Some(Stick::Left), Some(Stick::Right)];
 
-const STICK_VALUE_REVERSE: [u32; 2] = [
-    1,
-    2,
-];
+const STICK_VALUE_REVERSE: [u32; 2] = [1, 2];
 
 pub struct GamepadState {
     binds: Vec<BindType>,
@@ -126,7 +96,7 @@ impl GamepadState {
                     };
 
                     BindType::Button { value: button }
-                },
+                }
                 BindType::Stick { value: default } => {
                     let d = match default {
                         None => -1,
@@ -142,32 +112,26 @@ impl GamepadState {
                     };
 
                     BindType::Stick { value: button }
-                },
+                }
             };
 
             binds.push(bind);
         }
 
-        Self {
-            binds,
-        }
+        Self { binds }
     }
 
     pub fn save(&self, config_file: &ConfigFile) {
         for (idx, bind) in GAMEPAD_BINDS.iter().enumerate() {
             let value = match &self.binds[idx] {
-                BindType::Button { value: default } => {
-                    match default {
-                        Some(v) => *v as i32,
-                        None => -1,
-                    }
-                }
-                BindType::Stick { value: default } => {
-                    match default {
-                        Some(v) => *v as i32,
-                        None => -1,
-                    }
-                }
+                BindType::Button { value: default } => match default {
+                    Some(v) => *v as i32,
+                    None => -1,
+                },
+                BindType::Stick { value: default } => match default {
+                    Some(v) => *v as i32,
+                    None => -1,
+                },
             };
 
             config_file.set_config_int("Gamepad", bind.key, value);
@@ -183,9 +147,7 @@ impl Default for GamepadState {
             binds.push(bind.default);
         }
 
-        Self {
-            binds,
-        }
+        Self { binds }
     }
 }
 
@@ -197,7 +159,7 @@ pub fn gamepad_bind_row(idx: usize) -> Component<AppState> {
             for string in &BUTTON_STRINGS {
                 option_strings.push(string.to_string());
             }
-        },
+        }
         BindType::Stick { .. } => {
             for string in &STICK_STRINGS {
                 option_strings.push(string.to_string());
@@ -207,46 +169,42 @@ pub fn gamepad_bind_row(idx: usize) -> Component<AppState> {
 
     horizontal(vec![
         text(format!("{}:", GAMEPAD_BINDS[idx].display_name))
-        .v_position(VerticalOffset::AlignTop(2))
-        .height(Size::Exact(16))
-        .width(Size::Exact(75))
-        .into(),
+            .v_position(VerticalOffset::AlignTop(2))
+            .height(Size::Exact(16))
+            .width(Size::Exact(75))
+            .into(),
         dropdown(option_strings)
-        .on_select(move |app_state: &mut AppState, selected| {
-            let value = match app_state.gamepad_state.binds[idx] {
-                BindType::Button { .. } => {
-                    BindType::Button {
-                        value: BUTTON_VALUES[selected as usize]
-                    }
-                },
-                BindType::Stick { .. } => {
-                    BindType::Stick {
-                        value: STICK_VALUES[selected as usize]
-                    }
-                },
-            };
+            .on_select(move |app_state: &mut AppState, selected| {
+                let value = match app_state.gamepad_state.binds[idx] {
+                    BindType::Button { .. } => BindType::Button {
+                        value: BUTTON_VALUES[selected as usize],
+                    },
+                    BindType::Stick { .. } => BindType::Stick {
+                        value: STICK_VALUES[selected as usize],
+                    },
+                };
 
-            app_state.gamepad_state.binds[idx] = value;
-        })
-        .state_hook(move |app_state: &AppState, dropdown_state| {
-            match app_state.gamepad_state.binds[idx] {
-                BindType::Button { value } => {
-                    dropdown_state.selected = match value {
-                        None => 0,
-                        Some(v) => BUTTON_VALUE_REVERSE[v as usize],
-                    };
-                },
-                BindType::Stick { value } => {
-                    dropdown_state.selected = match value {
-                        None => 0,
-                        Some(v) => STICK_VALUE_REVERSE[v as usize],
-                    };
-                },
-            }
-        })
-        .width(Size::Exact(85))
-        .height(Size::Exact(20))
-        .into(),
+                app_state.gamepad_state.binds[idx] = value;
+            })
+            .state_hook(move |app_state: &AppState, dropdown_state| {
+                match app_state.gamepad_state.binds[idx] {
+                    BindType::Button { value } => {
+                        dropdown_state.selected = match value {
+                            None => 0,
+                            Some(v) => BUTTON_VALUE_REVERSE[v as usize],
+                        };
+                    }
+                    BindType::Stick { value } => {
+                        dropdown_state.selected = match value {
+                            None => 0,
+                            Some(v) => STICK_VALUE_REVERSE[v as usize],
+                        };
+                    }
+                }
+            })
+            .width(Size::Exact(85))
+            .height(Size::Exact(20))
+            .into(),
     ])
     .into()
 }
@@ -268,7 +226,7 @@ pub fn gamepad_page(width: u32, height: u32) -> Component<AppState> {
             ])
             .v_position(VerticalOffset::AlignTop(8))
             .spacing(18)
-            .into()
+            .into(),
         )
         .width(Size::Exact(width / 2))
         .height(Size::Exact(height))
@@ -285,7 +243,7 @@ pub fn gamepad_page(width: u32, height: u32) -> Component<AppState> {
                 ])
                 .v_position(VerticalOffset::AlignTop(8))
                 .spacing(18)
-                .into()
+                .into(),
             )
             .width(Size::Exact(width / 2))
             .height(Size::Exact((height as f32 * (7.0 / 12.0)) as u32))
@@ -299,13 +257,13 @@ pub fn gamepad_page(width: u32, height: u32) -> Component<AppState> {
                 ])
                 .v_position(VerticalOffset::AlignTop(8))
                 .spacing(22)
-                .into()
+                .into(),
             )
             .width(Size::Exact(width / 2))
             .height(Size::Exact((height as f32 * (5.0 / 12.0)) as u32))
             .into(),
         ])
-        .into()
+        .into(),
     ])
     .into()
 }
