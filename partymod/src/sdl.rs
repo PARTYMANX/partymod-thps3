@@ -1,13 +1,16 @@
-pub struct SdlContext {
+use partymod_common::syncunsafecell::SyncUnsafeCell;
+
+pub struct SDLContext {
     pub sdl_context: sdl3::Sdl,
     pub video_subsystem: sdl3::VideoSubsystem,
     pub joystick_subsystem: sdl3::JoystickSubsystem,
     pub gamepad_subsystem: sdl3::GamepadSubsystem,
 }
 
-unsafe impl Send for SdlContext {}
+unsafe impl Sync for SDLContext {}
+unsafe impl Send for SDLContext {}
 
-pub static mut SDL_CONTEXT: std::mem::MaybeUninit<SdlContext> = std::mem::MaybeUninit::uninit();
+pub static SDL_CONTEXT: SyncUnsafeCell<Option<SDLContext>> = SyncUnsafeCell::new(None);
 
 pub fn init() {
     let sdl_context = sdl3::init().unwrap();
@@ -16,7 +19,8 @@ pub fn init() {
     let gamepad_subsystem = sdl_context.gamepad().unwrap();
 
     unsafe {
-        SDL_CONTEXT = std::mem::MaybeUninit::new(SdlContext {
+        let ctx = &mut *SDL_CONTEXT.get();
+        *ctx = Some(SDLContext {
             sdl_context,
             video_subsystem,
             joystick_subsystem,

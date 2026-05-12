@@ -1,6 +1,9 @@
-use partymod_common::{config, patch};
+use partymod_common::patch;
 
+mod config;
 mod event;
+mod input;
+mod logger;
 mod sdl;
 mod settings;
 mod window;
@@ -22,6 +25,7 @@ extern "C" fn init_patch() {
         unsafe { gfx_d3d::patch() };
     }*/
 
+    logger::init();
     sdl::init();
     event::init();
     window::init();
@@ -30,7 +34,7 @@ extern "C" fn init_patch() {
     event::register_handler(window::handle_event);
     //event::register_handler(input::handle_event);
 
-    if config::get_config_bool("Miscellaneous", "Debug", false) {
+    if config::get_bool("Miscellaneous", "Debug", false) {
         partymod_common::console::init_console();
     }
 
@@ -87,7 +91,7 @@ pub extern "stdcall" fn DllMain(_hinst_dll: usize, fdw_reason: u32, _lp_reserved
                 settings::patch();
 
                 patch::patch_nop(0x004079a8 as *mut (), 0x004079f4 + 5 - 0x004079a8); // TEMPORARY - remove video playback
-                //input::patch();
+                input::patch();
             }
         }
         windows_sys::Win32::System::SystemServices::DLL_THREAD_ATTACH => {}

@@ -1,74 +1,57 @@
 use std::ffi::CString;
 
-struct ConfigContext {
+pub struct ConfigFile {
     filename: std::ffi::CString,
 }
 
-unsafe impl Send for ConfigContext {}
+impl ConfigFile {
+    pub fn new(filepath: &std::path::Path) -> Self {
+        let filename = std::ffi::CString::new(filepath.to_str().unwrap()).unwrap();
 
-static mut CONFIG_CONTEXT: std::mem::MaybeUninit<ConfigContext> = std::mem::MaybeUninit::uninit();
-
-pub fn init(exe_path: &std::path::Path) {
-    let filename = std::ffi::CString::new(exe_path.join("partymod.ini").to_str().unwrap()).unwrap();
-
-    unsafe {
-        CONFIG_CONTEXT = std::mem::MaybeUninit::new(ConfigContext { filename });
+        Self { filename }
     }
-}
 
-#[allow(static_mut_refs)]
-pub fn get_config_int(section: &str, key: &str, default: i32) -> u32 {
-    let app_name = CString::new(section).unwrap();
-    let key_name = CString::new(key).unwrap();
+    pub fn get_config_int(&self, section: &str, key: &str, default: i32) -> i32 {
+        let app_name = CString::new(section).unwrap();
+        let key_name = CString::new(key).unwrap();
 
-    unsafe {
-        windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntA(
-            app_name.as_ptr() as *const u8,
-            key_name.as_ptr() as *const u8,
-            default,
-            CONFIG_CONTEXT.assume_init_ref().filename.as_ptr() as *const u8,
-        )
+        let result = unsafe {
+            windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntA(
+                app_name.as_ptr() as *const u8,
+                key_name.as_ptr() as *const u8,
+                default,
+                self.filename.as_ptr() as *const u8,
+            )
+        };
+
+        result as i32
     }
-}
 
-#[allow(static_mut_refs)]
-pub fn get_config_bool(section: &str, key: &str, default: bool) -> bool {
-    let app_name = CString::new(section).unwrap();
-    let key_name = CString::new(key).unwrap();
+    pub fn get_config_bool(&self, section: &str, key: &str, default: bool) -> bool {
+        self.get_config_int(section, key, default as i32) != 0
+    }
 
-    let result = unsafe {
-        windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntA(
-            app_name.as_ptr() as *const u8,
-            key_name.as_ptr() as *const u8,
-            default as i32,
-            CONFIG_CONTEXT.assume_init_ref().filename.as_ptr() as *const u8,
-        )
-    };
+    pub fn get_config_string(&self, section: &str, key: &str, default: &str) -> String {
+        let app_name = CString::new(section).unwrap();
+        let key_name = CString::new(key).unwrap();
+        let default = CString::new(default).unwrap();
+        let mut result_buf = [0u8; 256];
 
-    result != 0
-}
+        let result = unsafe {
+            windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileStringA(
+                app_name.as_ptr() as *const u8,
+                key_name.as_ptr() as *const u8,
+                default.as_ptr() as *const u8,
+                result_buf.as_mut_ptr(),
+                256,
+                self.filename.as_ptr() as *const u8,
+            )
+        };
 
-#[allow(static_mut_refs)]
-pub fn get_config_string(section: &str, key: &str, default: &str) -> String {
-    let app_name = CString::new(section).unwrap();
-    let key_name = CString::new(key).unwrap();
-    let default = CString::new(default).unwrap();
-    let mut result_buf = [0u8; 256];
-
-    let result = unsafe {
-        windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileStringA(
-            app_name.as_ptr() as *const u8,
-            key_name.as_ptr() as *const u8,
-            default.as_ptr() as *const u8,
-            result_buf.as_mut_ptr(),
-            256,
-            CONFIG_CONTEXT.assume_init_ref().filename.as_ptr() as *const u8,
-        )
-    };
-
-    if result != 0 {
-        String::from_utf8(result_buf.to_vec()).unwrap()
-    } else {
-        panic!("AAAHHHH");
+        if result != 0 {
+            String::from_utf8(result_buf.to_vec()).unwrap()
+        } else {
+            panic!("Failed to parse utf8 string");
+        }
     }
 }

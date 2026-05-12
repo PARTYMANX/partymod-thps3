@@ -1,7 +1,7 @@
-use partymod_common::{config, patch};
+use partymod_common::{logger::LogLevel, patch, syncunsafecell::SyncUnsafeCell};
 use raw_window_handle::HasWindowHandle;
 
-use crate::sdl::SDL_CONTEXT;
+use crate::{logger, sdl::SDL_CONTEXT};
 
 pub struct WindowContext {
     window: Option<sdl3::video::Window>,
@@ -11,17 +11,20 @@ pub struct WindowContext {
     res_y: u32,
 }
 
-pub static mut WINDOW_CONTEXT: std::mem::MaybeUninit<WindowContext> =
-    std::mem::MaybeUninit::uninit();
+unsafe impl Sync for WindowContext {}
+unsafe impl Send for WindowContext {}
+
+pub static WINDOW_CONTEXT: SyncUnsafeCell<Option<WindowContext>> = SyncUnsafeCell::new(None);
 
 pub fn init() {
-    let is_windowed = config::get_config_bool("Graphics", "Windowed", true);
-    let is_borderless = config::get_config_bool("Graphics", "Borderless", false);
-    let res_x = config::get_config_int("Graphics", "ResolutionX", 640);
-    let res_y = config::get_config_int("Graphics", "ResolutionY", 480);
+    let is_windowed = crate::config::get_bool("Graphics", "Windowed", true);
+    let is_borderless = crate::config::get_bool("Graphics", "Borderless", false);
+    let res_x = crate::config::get_int("Graphics", "ResolutionX", 640) as u32;
+    let res_y = crate::config::get_int("Graphics", "ResolutionY", 480) as u32;
 
     unsafe {
-        WINDOW_CONTEXT = std::mem::MaybeUninit::new(WindowContext {
+        let ctx = &mut *WINDOW_CONTEXT.get();
+        *ctx = Some(WindowContext {
             window: None,
             is_windowed,
             is_borderless,
@@ -32,8 +35,10 @@ pub fn init() {
 }
 
 pub fn init_settings() {
-    #[allow(static_mut_refs)]
-    let window_context = unsafe { WINDOW_CONTEXT.assume_init_mut() };
+    let window_context = match unsafe { &*WINDOW_CONTEXT.get() } {
+        Some(v) => v,
+        None => panic!("Tried to use uninitialized window context!"),
+    };
 
     unsafe {
         let ptr_is_windowed = 0x008510a9 as *mut bool;
@@ -45,7 +50,7 @@ pub fn init_settings() {
         *ptr_res_y = window_context.res_y;
     }
 
-    println!("INITIALIZING SETTINGS!");
+    logger::log(LogLevel::Debug, "INITIALIZING SETTINGS!");
 }
 
 pub fn handle_event(e: &sdl3::event::Event) {
@@ -70,13 +75,15 @@ pub fn handle_event(e: &sdl3::event::Event) {
 }
 
 extern "C" fn get_or_create_window() -> isize {
-    #[allow(static_mut_refs)]
-    let window_context = unsafe { WINDOW_CONTEXT.assume_init_mut() };
+    let window_context = match unsafe { &mut *WINDOW_CONTEXT.get() } {
+        Some(v) => v,
+        None => panic!("Tried to use uninitialized window context!"),
+    };
 
     let hwnd = 0x0085109c as *mut isize;
 
     if window_context.window.is_none() {
-        println!("CREATING WINDOW!");
+        logger::log(LogLevel::Debug, "CREATING WINDOW!");
         let is_windowed = window_context.is_windowed;
         let is_borderless = window_context.is_borderless;
         let res_x = window_context.res_x;
@@ -92,12 +99,13 @@ extern "C" fn get_or_create_window() -> isize {
             *ptr_res_y = res_y;
         }
 
-        #[allow(static_mut_refs)]
         let mut window_builder = unsafe {
-            SDL_CONTEXT
-                .assume_init_ref()
-                .video_subsystem
-                .window("THPS3 - PARTYMOD", res_x, res_y)
+            let ctx = &*SDL_CONTEXT.get();
+
+            match ctx {
+                Some(v) => v.video_subsystem.window("THPS3 - PARTYMOD", res_x, res_y),
+                None => panic!("Tried to use uninitialized SDL context!"),
+            }
         };
 
         window_builder.position_centered().high_pixel_density();
@@ -127,8 +135,10 @@ extern "C" fn get_or_create_window() -> isize {
 }
 
 extern "C" fn is_window() -> bool {
-    #[allow(static_mut_refs)]
-    let window_context = unsafe { WINDOW_CONTEXT.assume_init_ref() };
+    let window_context = match unsafe { &*WINDOW_CONTEXT.get() } {
+        Some(v) => v,
+        None => panic!("Tried to use uninitialized window context!"),
+    };
     window_context.is_windowed
 }
 
