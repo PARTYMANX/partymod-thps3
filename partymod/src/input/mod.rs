@@ -2,7 +2,7 @@ use partymod_common::{
     controls::GamepadManager, logger::LogLevel, patch, syncunsafecell::SyncUnsafeCell,
 };
 use partymod_config::GAMEPAD_BINDS;
-use partymod_config_common::Button;
+use partymod_config_common::{Button, Stick};
 
 use crate::{config, event, logger, sdl::SDL_CONTEXT};
 
@@ -49,7 +49,18 @@ fn setup_controls() {
                     inp_ctx.gamepad_manager.add_button_binding(bind.key, v);
                 }
             }
-            partymod_config_common::BindType::Stick { value } => {}
+            partymod_config_common::BindType::Stick { value } => {
+                let default = match value {
+                    None => -1,
+                    Some(v) => *v as i32,
+                };
+
+                let stick = config::get_int("Gamepad", bind.key, default);
+
+                if let Some(v) = Stick::from_i32(stick) {
+                    inp_ctx.gamepad_manager.add_stick_binding(bind.key, v);
+                }
+            }
         }
     }
 }
@@ -100,7 +111,6 @@ impl InputManager {
         event::register_handler(event_handler);
 
         let dev_result = self.new_device(0);
-        println!("DEVICE RESULT: {}", dev_result);
 
         // keyboard state must be initialized here otherwise the game will crash
         unsafe {
@@ -124,6 +134,20 @@ impl InputManager {
             new_device(self, idx, std::ptr::null())
         }
     }
+
+    extern "thiscall" fn disable_actuator(&mut self, idx: u32) {
+        unsafe {
+            let self_ptr = self as *mut Self as *mut ();
+            let device = self_ptr.byte_add((8 + (idx * 0x7c)) as usize) as *mut *mut device::Device;
+
+            match (*device).as_mut() {
+                Some(v) => {
+                    v.disable_actuators();
+                }
+                None => {}
+            }
+        }
+    }
 }
 
 extern "cdecl" fn is_window_active() -> bool {
@@ -133,6 +157,12 @@ extern "cdecl" fn is_window_active() -> bool {
 pub unsafe fn patch() {
     unsafe {
         patch::patch_jmp(0x0040db20 as *mut (), InputManager::init as *const ());
+
+        // replace DisableActuator aliases with correct calls
+        patch::patch_call(0x004ab8a7 as *mut (), InputManager::disable_actuator as *const ());
+        patch::patch_call(0x0041fa98 as *mut (), InputManager::disable_actuator as *const ());
+        patch::patch_call(0x00463f3d as *mut (), InputManager::disable_actuator as *const ());
+
         device::patch();
 
         // always say the window is active

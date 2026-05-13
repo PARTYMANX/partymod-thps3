@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 
-use partymod_config_common::Button;
-use sdl3::sys::joystick::SDL_JoystickID;
+use partymod_config_common::{Button, Stick};
+use sdl3::{gamepad::Axis, sys::joystick::SDL_JoystickID};
 
 // handles bindings, polling, and controllers
 pub struct GamepadManager {
     button_bindings: HashMap<String, Button>,
+    stick_bindings: HashMap<String, Stick>,
+    // TODO: stick bindings
     gamepads: Vec<sdl3::gamepad::Gamepad>,
 }
 
@@ -14,6 +16,7 @@ impl GamepadManager {
     pub fn new() -> Self {
         Self {
             button_bindings: HashMap::new(),
+            stick_bindings: HashMap::new(),
             gamepads: Vec::new(),
         }
     }
@@ -21,7 +24,7 @@ impl GamepadManager {
     pub fn add_controller(&mut self, idx: u32, gamepad_subsystem: &sdl3::GamepadSubsystem) {
         let gamepad = match gamepad_subsystem.open(SDL_JoystickID(idx)) {
             Ok(v) => v,
-            Err(e) => return, // fail silently for now; we'll want to add a log callback
+            Err(_e) => return, // fail silently for now; we'll want to add a log callback
         };
 
         self.gamepads.push(gamepad);
@@ -48,6 +51,10 @@ impl GamepadManager {
 
     pub fn add_button_binding(&mut self, name: &str, button: Button) {
         self.button_bindings.insert(name.to_owned(), button);
+    }
+
+    pub fn add_stick_binding(&mut self, name: &str, stick: Stick) {
+        self.stick_bindings.insert(name.to_owned(), stick);
     }
 
     pub fn poll_button_binding(&self, name: &str) -> (bool, i16) {
@@ -84,6 +91,47 @@ impl GamepadManager {
         }
 
         result
+    }
+
+    pub fn poll_stick_binding(&self, name: &str) -> (i16, i16) {
+        let binding = match self.stick_bindings.get(name) {
+            Some(v) => v,
+            None => {
+                // TODO: log failure
+                println!("Failed to poll!");
+                return (0, 0);
+            }
+        };
+
+        let mut result = (0, 0);
+        let mut result_mag_sq = 0;
+
+        for gamepad in &self.gamepads {
+            let (x, y) = match binding {
+                Stick::Left => {
+                    (gamepad.axis(Axis::LeftX), gamepad.axis(Axis::LeftY))
+                }
+                Stick::Right => {
+                    (gamepad.axis(Axis::RightX), gamepad.axis(Axis::RightY))
+                }
+            };
+
+            // select the input with the greater magnitude
+            let mag_sq = (x as i32 * x as i32) + (y as i32 * y as i32);
+
+            if result_mag_sq < mag_sq {
+                result = (x, y);
+                result_mag_sq = mag_sq;
+            }
+        }
+
+        result
+    }
+
+    pub fn set_rumble(&mut self, high: u16, low: u16) {
+        for gamepad in &mut self.gamepads {
+            let _ = gamepad.set_rumble(low, high, 0);
+        }
     }
 
     pub fn event_handler(
