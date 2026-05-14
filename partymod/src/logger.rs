@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use partymod_common::{
     logger::{LogLevel, Logger, PrintlnLogger},
     syncunsafecell::SyncUnsafeCell,
@@ -5,7 +7,7 @@ use partymod_common::{
 
 use crate::config;
 
-pub static LOGGER_CONTEXT: SyncUnsafeCell<Option<PrintlnLogger>> = SyncUnsafeCell::new(None);
+pub static LOGGER_CONTEXT: SyncUnsafeCell<Option<Arc<PrintlnLogger>>> = SyncUnsafeCell::new(None);
 
 pub fn init() {
     let level = match config::get_int("Logging", "Level", 5) {
@@ -18,7 +20,7 @@ pub fn init() {
 
     unsafe {
         let ctx = &mut *LOGGER_CONTEXT.get();
-        *ctx = Some(PrintlnLogger::new(level));
+        *ctx = Some(Arc::new(PrintlnLogger::new(level)));
     }
 }
 

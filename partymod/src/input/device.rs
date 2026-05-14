@@ -1,4 +1,7 @@
-use partymod_common::{logger::LogLevel, patch::{patch_call, patch_jmp}};
+use partymod_common::{
+    logger::LogLevel,
+    patch::{patch_call, patch_jmp},
+};
 
 use crate::logger;
 
@@ -81,11 +84,11 @@ impl Device {
     }
 
     extern "thiscall" fn acquire(&mut self) {
-        logger::log(LogLevel::Debug, "Device::acquire!");
+        // do nothing
     }
 
     extern "thiscall" fn unacquire(&mut self) {
-        logger::log(LogLevel::Debug, "Device::unacquire!");
+        // do nothing
     }
 
     extern "thiscall" fn init(&mut self, _unk: u32) {
@@ -99,7 +102,7 @@ impl Device {
     }
 
     extern "thiscall" fn release(&mut self) {
-        logger::log(LogLevel::Debug, "Device::release!");
+        // do nothing
     }
 
     extern "thiscall" fn activate_actuator(&mut self, idx: u32, percent: u32) {
@@ -114,15 +117,18 @@ impl Device {
             }
         };
 
+        let player = self.slot as usize;
+
         if self.state == 2 && (self.capabilities & 0x02 != 0) {
             if idx < self.num_actuators {
-                let strength = (percent as f32 * 0.01) * self.vibration_data_max[idx as usize] as f32;
+                let strength =
+                    (percent as f32 * 0.01) * self.vibration_data_max[idx as usize] as f32;
                 self.vibration_data_direct[idx as usize] = strength as u8;
 
                 let high = (self.vibration_data_direct[0] as u16) << 8;
                 let low = (self.vibration_data_direct[1] as u16) << 8;
 
-                inp_ctx.gamepad_manager.set_rumble(high, low);
+                inp_ctx.gamepad_manager.set_rumble(player, high, low);
             }
         }
     }
@@ -145,6 +151,8 @@ impl Device {
             }
         };
 
+        let player = self.slot as usize;
+
         if self.state == 2 && (self.capabilities & 0x02 != 0) {
             for i in 0..self.num_actuators {
                 self.vibration_data_direct[i as usize] = 0;
@@ -153,7 +161,7 @@ impl Device {
             let high = (self.vibration_data_direct[0] as u16) << 8;
             let low = (self.vibration_data_direct[1] as u16) << 8;
 
-            inp_ctx.gamepad_manager.set_rumble(high, low);
+            inp_ctx.gamepad_manager.set_rumble(player, high, low);
         }
     }
 
@@ -176,9 +184,12 @@ impl Device {
                 }
             };
 
+            let player = self.slot as usize;
+
             if self.state == 2 && (self.capabilities & 0x02 != 0) {
                 for i in 0..self.num_actuators {
-                    self.vibration_data_old_direct[i as usize] = self.vibration_data_direct[i as usize];
+                    self.vibration_data_old_direct[i as usize] =
+                        self.vibration_data_direct[i as usize];
 
                     self.vibration_data_direct[i as usize] = 0;
                 }
@@ -186,7 +197,7 @@ impl Device {
                 let high = (self.vibration_data_direct[0] as u16) << 8;
                 let low = (self.vibration_data_direct[1] as u16) << 8;
 
-                inp_ctx.gamepad_manager.set_rumble(high, low);
+                inp_ctx.gamepad_manager.set_rumble(player, high, low);
             }
         }
 
@@ -205,15 +216,18 @@ impl Device {
                     }
                 };
 
+                let player = self.slot as usize;
+
                 if self.state == 2 && (self.capabilities & 0x02 != 0) {
                     for i in 0..self.num_actuators {
-                        self.vibration_data_direct[i as usize] = self.vibration_data_old_direct[i as usize];
+                        self.vibration_data_direct[i as usize] =
+                            self.vibration_data_old_direct[i as usize];
                     }
 
                     let high = (self.vibration_data_direct[0] as u16) << 8;
                     let low = (self.vibration_data_direct[1] as u16) << 8;
 
-                    inp_ctx.gamepad_manager.set_rumble(high, low);
+                    inp_ctx.gamepad_manager.set_rumble(player, high, low);
                 }
             }
         }
@@ -227,72 +241,138 @@ impl Device {
             }
         };
 
-        if inp_ctx.gamepad_manager.poll_button_binding("Pause").0 {
+        let player = self.slot as usize;
+
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "Pause")
+            .0
+        {
             self.control_data[2] |= 0x01 << 3;
         }
-        if inp_ctx.gamepad_manager.poll_button_binding("ViewToggle").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "ViewToggle")
+            .0
+        {
             self.control_data[2] |= 0x01 << 0;
         }
-        if inp_ctx.gamepad_manager.poll_button_binding("SwivelLock").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "SwivelLock")
+            .0
+        {
             self.control_data[2] |= 0x01 << 2;
         }
 
-        if inp_ctx.gamepad_manager.poll_button_binding("Grind").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "Grind")
+            .0
+        {
             self.control_data[3] |= 0x01 << 4;
             self.control_data[12] = 0xFF;
         }
-        if inp_ctx.gamepad_manager.poll_button_binding("Grab").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "Grab")
+            .0
+        {
             self.control_data[3] |= 0x01 << 5;
             self.control_data[13] = 0xFF;
         }
-        if inp_ctx.gamepad_manager.poll_button_binding("Ollie").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "Ollie")
+            .0
+        {
             self.control_data[3] |= 0x01 << 6;
             self.control_data[14] = 0xFF;
         }
-        if inp_ctx.gamepad_manager.poll_button_binding("Flip").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "Flip")
+            .0
+        {
             self.control_data[3] |= 0x01 << 7;
             self.control_data[15] = 0xFF;
         }
 
-        if inp_ctx.gamepad_manager.poll_button_binding("SpinLeft").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "SpinLeft")
+            .0
+        {
             self.control_data[3] |= 0x01 << 2;
             self.control_data[16] = 0xFF;
         }
-        if inp_ctx.gamepad_manager.poll_button_binding("SpinRight").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "SpinRight")
+            .0
+        {
             self.control_data[3] |= 0x01 << 3;
             self.control_data[17] = 0xFF;
         }
-        if inp_ctx.gamepad_manager.poll_button_binding("Nollie").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "Nollie")
+            .0
+        {
             self.control_data[3] |= 0x01 << 0;
             self.control_data[18] = 0xFF;
         }
-        if inp_ctx.gamepad_manager.poll_button_binding("Switch").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "Switch")
+            .0
+        {
             self.control_data[3] |= 0x01 << 1;
             self.control_data[19] = 0xFF;
         }
 
-        if inp_ctx.gamepad_manager.poll_button_binding("Forward").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "Forward")
+            .0
+        {
             self.control_data[2] |= 0x01 << 4;
             self.control_data[10] = 0xFF;
         }
-        if inp_ctx.gamepad_manager.poll_button_binding("Right").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "Right")
+            .0
+        {
             self.control_data[2] |= 0x01 << 5;
             self.control_data[8] = 0xFF;
         }
-        if inp_ctx.gamepad_manager.poll_button_binding("Backward").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "Backward")
+            .0
+        {
             self.control_data[2] |= 0x01 << 6;
             self.control_data[11] = 0xFF;
         }
-        if inp_ctx.gamepad_manager.poll_button_binding("Left").0 {
+        if inp_ctx
+            .gamepad_manager
+            .poll_button_binding(player, "Left")
+            .0
+        {
             self.control_data[2] |= 0x01 << 7;
             self.control_data[9] = 0xFF;
         }
 
-        let camera_stick = inp_ctx.gamepad_manager.poll_stick_binding("CameraStick");
+        let camera_stick = inp_ctx
+            .gamepad_manager
+            .poll_stick_binding(player, "CameraStick");
         self.control_data[4] = ((camera_stick.0 >> 8) + 128) as u8;
         self.control_data[5] = ((camera_stick.1 >> 8) + 128) as u8;
 
-        let movement_stick = inp_ctx.gamepad_manager.poll_stick_binding("MovementStick");
+        let movement_stick = inp_ctx
+            .gamepad_manager
+            .poll_stick_binding(player, "MovementStick");
         self.control_data[6] = ((movement_stick.0 >> 8) + 128) as u8;
         self.control_data[7] = ((movement_stick.1 >> 8) + 128) as u8;
     }
@@ -310,12 +390,30 @@ pub unsafe fn patch() {
 
         // ActivateActuators was optimized into a different call
         // restore each individual call
-        patch_call(0x004a90fb as *mut (), Device::activate_actuator as *const ());
-        patch_call(0x004ac37f as *mut (), Device::activate_actuator as *const ());
-        patch_call(0x004ac390 as *mut (), Device::activate_actuator as *const ());
-        patch_call(0x004b18f2 as *mut (), Device::activate_actuator as *const ());
-        patch_call(0x004b191d as *mut (), Device::activate_actuator as *const ());
-        patch_call(0x004a9141 as *mut (), Device::activate_actuator as *const ());
+        patch_call(
+            0x004a90fb as *mut (),
+            Device::activate_actuator as *const (),
+        );
+        patch_call(
+            0x004ac37f as *mut (),
+            Device::activate_actuator as *const (),
+        );
+        patch_call(
+            0x004ac390 as *mut (),
+            Device::activate_actuator as *const (),
+        );
+        patch_call(
+            0x004b18f2 as *mut (),
+            Device::activate_actuator as *const (),
+        );
+        patch_call(
+            0x004b191d as *mut (),
+            Device::activate_actuator as *const (),
+        );
+        patch_call(
+            0x004a9141 as *mut (),
+            Device::activate_actuator as *const (),
+        );
 
         // same deal with all of these but they were only ever called once
         patch_call(0x004c0f03 as *mut (), Device::enable_actuators as *const ());

@@ -192,7 +192,7 @@ impl SDLKeyContext {
     }
 
     fn get_key_name(&self, scancode: sdl3::keyboard::Scancode) -> String {
-        let key = sdl3::keyboard::Keycode::from_scancode(scancode, SDL_KMOD_NONE, false);
+        let key = sdl3::keyboard::Keycode::from_scancode(scancode, SDL_KMOD_NONE, true);
 
         match key {
             Some(v) => v.name(),

@@ -78,6 +78,8 @@ unsafe fn patch_fast_quit() {
     }
 }
 
+// TODO: patch 00411d70 to return a version number (default should be 0x00010001)
+
 //#[unsafe(export_name = "DllMain")]
 #[unsafe(no_mangle)]
 pub extern "stdcall" fn DllMain(_hinst_dll: usize, fdw_reason: u32, _lp_reserved: usize) -> i32 {

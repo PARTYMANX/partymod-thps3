@@ -1,10 +1,14 @@
 use partymod_common::{
-    controls::GamepadManager, logger::LogLevel, patch, syncunsafecell::SyncUnsafeCell,
+    gamepad::GamepadManager, logger::LogLevel, patch, syncunsafecell::SyncUnsafeCell,
 };
 use partymod_config::GAMEPAD_BINDS;
 use partymod_config_common::{Button, Stick};
 
-use crate::{config, event, logger, sdl::SDL_CONTEXT};
+use crate::{
+    config, event,
+    logger::{self, LOGGER_CONTEXT},
+    sdl::SDL_CONTEXT,
+};
 
 mod device;
 
@@ -19,9 +23,16 @@ pub static INPUT_CONTEXT: SyncUnsafeCell<Option<InputContext>> = SyncUnsafeCell:
 
 fn init_context() {
     unsafe {
+        let log_ctx = &*LOGGER_CONTEXT.get();
+
+        let logger = match log_ctx {
+            Some(v) => v.clone(),
+            None => panic!("Tried to use uninitialized logger context!"),
+        };
+
         let ctx = &mut *INPUT_CONTEXT.get();
         *ctx = Some(InputContext {
-            gamepad_manager: GamepadManager::new(),
+            gamepad_manager: GamepadManager::new(1, Some(logger)),
         })
     }
 }
@@ -36,7 +47,6 @@ fn setup_controls() {
 
     for bind in &GAMEPAD_BINDS {
         match &bind.default {
-            //
             partymod_config_common::BindType::Button { value } => {
                 let default = match value {
                     None => -1,
@@ -80,6 +90,66 @@ fn event_handler(event: &sdl3::event::Event) {
         }
     };
 
+    match event {
+        sdl3::event::Event::MouseMotion { x, y, .. } => unsafe {
+            let mouse_move: unsafe extern "C" fn(i16, i16, i16) =
+                std::mem::transmute(0x00405370 as *const ());
+
+            mouse_move(0x0000, *x as i16, *y as i16);
+        },
+        sdl3::event::Event::MouseButtonDown {
+            mouse_btn, x, y, ..
+        } => unsafe {
+            match mouse_btn {
+                sdl3::mouse::MouseButton::Left => {
+                    let mouse_left_down: unsafe extern "C" fn(i16, i16, i16) =
+                        std::mem::transmute(0x00404950 as *const ());
+
+                    mouse_left_down(0x0000, *x as i16, *y as i16);
+                }
+                sdl3::mouse::MouseButton::Middle => {
+                    let mouse_middle_down: unsafe extern "C" fn(i16, i16, i16) =
+                        std::mem::transmute(0x00404dc0 as *const ());
+
+                    mouse_middle_down(0x0000, *x as i16, *y as i16);
+                }
+                sdl3::mouse::MouseButton::Right => {
+                    let mouse_right_down: unsafe extern "C" fn(i16, i16, i16) =
+                        std::mem::transmute(0x00405010 as *const ());
+
+                    mouse_right_down(0x0000, *x as i16, *y as i16);
+                }
+                _ => {}
+            }
+        },
+        sdl3::event::Event::MouseButtonUp {
+            mouse_btn, x, y, ..
+        } => unsafe {
+            match mouse_btn {
+                sdl3::mouse::MouseButton::Left => {
+                    let mouse_left_up: unsafe extern "C" fn(i16, i16, i16) =
+                        std::mem::transmute(0x00404d20 as *const ());
+
+                    mouse_left_up(0x0000, *x as i16, *y as i16);
+                }
+                sdl3::mouse::MouseButton::Middle => {
+                    let mouse_middle_up: unsafe extern "C" fn(i16, i16, i16) =
+                        std::mem::transmute(0x00404f70 as *const ());
+
+                    mouse_middle_up(0x0000, *x as i16, *y as i16);
+                }
+                sdl3::mouse::MouseButton::Right => {
+                    let mouse_right_up: unsafe extern "C" fn(i16, i16, i16) =
+                        std::mem::transmute(0x004052d0 as *const ());
+
+                    mouse_right_up(0x0000, *x as i16, *y as i16);
+                }
+                _ => {}
+            }
+        },
+        _ => {}
+    }
+
     inp_ctx
         .gamepad_manager
         .event_handler(event, &sdl_ctx.gamepad_subsystem);
@@ -110,7 +180,7 @@ impl InputManager {
 
         event::register_handler(event_handler);
 
-        let dev_result = self.new_device(0);
+        let _ = self.new_device(0);
 
         // keyboard state must be initialized here otherwise the game will crash
         unsafe {
@@ -159,9 +229,18 @@ pub unsafe fn patch() {
         patch::patch_jmp(0x0040db20 as *mut (), InputManager::init as *const ());
 
         // replace DisableActuator aliases with correct calls
-        patch::patch_call(0x004ab8a7 as *mut (), InputManager::disable_actuator as *const ());
-        patch::patch_call(0x0041fa98 as *mut (), InputManager::disable_actuator as *const ());
-        patch::patch_call(0x00463f3d as *mut (), InputManager::disable_actuator as *const ());
+        patch::patch_call(
+            0x004ab8a7 as *mut (),
+            InputManager::disable_actuator as *const (),
+        );
+        patch::patch_call(
+            0x0041fa98 as *mut (),
+            InputManager::disable_actuator as *const (),
+        );
+        patch::patch_call(
+            0x00463f3d as *mut (),
+            InputManager::disable_actuator as *const (),
+        );
 
         device::patch();
 

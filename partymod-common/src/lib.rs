@@ -1,9 +1,9 @@
 pub mod bps;
 pub mod config;
 pub mod console;
-pub mod controls;
 pub mod crc;
 pub mod event;
+pub mod gamepad;
 pub mod logger;
 pub mod patch;
 pub mod syncunsafecell;
