@@ -2,8 +2,9 @@ use partymod_common::{
     logger::LogLevel,
     patch::{patch_call, patch_jmp},
 };
+use sdl3::keyboard::KeyboardState;
 
-use crate::logger;
+use crate::{input::InputContext, logger, sdl::SDL_CONTEXT};
 
 #[repr(C)]
 pub struct Device {
@@ -78,6 +79,10 @@ impl Device {
         self.control_data[7] = 127;
 
         self.poll_controller();
+
+        if self.slot == 0 {
+            self.poll_keyboard();
+        }
 
         self.control_data[2] = !self.control_data[2];
         self.control_data[3] = !self.control_data[3];
@@ -233,6 +238,84 @@ impl Device {
         }
     }
 
+    fn poll_keyboard(&mut self) {
+        let inp_ctx = unsafe {
+            match &*super::INPUT_CONTEXT.get() {
+                Some(v) => v,
+                None => panic!("Tried to get uninitialized input context!"),
+            }
+        };
+
+        let sdl_ctx = unsafe {
+            match &*SDL_CONTEXT.get() {
+                Some(v) => v,
+                None => panic!("Tried to get uninitialized SDL context!"),
+            }
+        };
+
+        let event_pump = match sdl_ctx.sdl_context.event_pump() {
+            Ok(v) => v,
+            Err(e) => {
+                logger::log(
+                    LogLevel::Error,
+                    &format!("Failed to get keyboard state: {}", e),
+                );
+                return;
+            }
+        };
+
+        let keyboard_state = event_pump.keyboard_state();
+
+        self.poll_keyboard_key(inp_ctx, &keyboard_state, "Pause", InternalButton::Start);
+        self.poll_keyboard_key(
+            inp_ctx,
+            &keyboard_state,
+            "ViewToggle",
+            InternalButton::Select,
+        );
+        self.poll_keyboard_key(inp_ctx, &keyboard_state, "SwivelLock", InternalButton::R3);
+
+        self.poll_keyboard_key(inp_ctx, &keyboard_state, "Ollie", InternalButton::Cross);
+        self.poll_keyboard_key(inp_ctx, &keyboard_state, "Flip", InternalButton::Square);
+        self.poll_keyboard_key(inp_ctx, &keyboard_state, "Grab", InternalButton::Circle);
+        self.poll_keyboard_key(inp_ctx, &keyboard_state, "Grind", InternalButton::Triangle);
+
+        self.poll_keyboard_key(inp_ctx, &keyboard_state, "SpinLeft", InternalButton::L1);
+        self.poll_keyboard_key(inp_ctx, &keyboard_state, "SpinRight", InternalButton::R1);
+        self.poll_keyboard_key(inp_ctx, &keyboard_state, "Nollie", InternalButton::L2);
+        self.poll_keyboard_key(inp_ctx, &keyboard_state, "Switch", InternalButton::R2);
+
+        self.poll_keyboard_key(inp_ctx, &keyboard_state, "Forward", InternalButton::DPadUp);
+        self.poll_keyboard_key(
+            inp_ctx,
+            &keyboard_state,
+            "Backward",
+            InternalButton::DPadDown,
+        );
+        self.poll_keyboard_key(inp_ctx, &keyboard_state, "Left", InternalButton::DPadLeft);
+        self.poll_keyboard_key(inp_ctx, &keyboard_state, "Right", InternalButton::DPadRight);
+
+        // TODO: axes
+    }
+
+    fn poll_keyboard_key(
+        &mut self,
+        inp_ctx: &InputContext,
+        keyboard_state: &KeyboardState,
+        name: &str,
+        internal_button: InternalButton,
+    ) {
+        let pressed = inp_ctx
+            .keybind_manager
+            .poll_button_binding(name, keyboard_state);
+
+        let pressure = if pressed { 0xFF } else { 0x00 };
+
+        if pressed {
+            self.update_internal_button(internal_button, pressed, pressure);
+        }
+    }
+
     fn poll_controller(&mut self) {
         let inp_ctx = unsafe {
             match &*super::INPUT_CONTEXT.get() {
@@ -243,126 +326,24 @@ impl Device {
 
         let player = self.slot as usize;
 
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "Pause")
-            .0
-        {
-            self.control_data[2] |= 0x01 << 3;
-        }
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "ViewToggle")
-            .0
-        {
-            self.control_data[2] |= 0x01 << 0;
-        }
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "SwivelLock")
-            .0
-        {
-            self.control_data[2] |= 0x01 << 2;
-        }
+        self.poll_controller_button(inp_ctx, player, "Pause", InternalButton::Start);
+        self.poll_controller_button(inp_ctx, player, "ViewToggle", InternalButton::Select);
+        self.poll_controller_button(inp_ctx, player, "SwivelLock", InternalButton::R3);
 
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "Grind")
-            .0
-        {
-            self.control_data[3] |= 0x01 << 4;
-            self.control_data[12] = 0xFF;
-        }
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "Grab")
-            .0
-        {
-            self.control_data[3] |= 0x01 << 5;
-            self.control_data[13] = 0xFF;
-        }
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "Ollie")
-            .0
-        {
-            self.control_data[3] |= 0x01 << 6;
-            self.control_data[14] = 0xFF;
-        }
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "Flip")
-            .0
-        {
-            self.control_data[3] |= 0x01 << 7;
-            self.control_data[15] = 0xFF;
-        }
+        self.poll_controller_button(inp_ctx, player, "Ollie", InternalButton::Cross);
+        self.poll_controller_button(inp_ctx, player, "Flip", InternalButton::Square);
+        self.poll_controller_button(inp_ctx, player, "Grab", InternalButton::Circle);
+        self.poll_controller_button(inp_ctx, player, "Grind", InternalButton::Triangle);
 
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "SpinLeft")
-            .0
-        {
-            self.control_data[3] |= 0x01 << 2;
-            self.control_data[16] = 0xFF;
-        }
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "SpinRight")
-            .0
-        {
-            self.control_data[3] |= 0x01 << 3;
-            self.control_data[17] = 0xFF;
-        }
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "Nollie")
-            .0
-        {
-            self.control_data[3] |= 0x01 << 0;
-            self.control_data[18] = 0xFF;
-        }
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "Switch")
-            .0
-        {
-            self.control_data[3] |= 0x01 << 1;
-            self.control_data[19] = 0xFF;
-        }
+        self.poll_controller_button(inp_ctx, player, "SpinLeft", InternalButton::L1);
+        self.poll_controller_button(inp_ctx, player, "SpinRight", InternalButton::R1);
+        self.poll_controller_button(inp_ctx, player, "Nollie", InternalButton::L2);
+        self.poll_controller_button(inp_ctx, player, "Switch", InternalButton::R2);
 
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "Forward")
-            .0
-        {
-            self.control_data[2] |= 0x01 << 4;
-            self.control_data[10] = 0xFF;
-        }
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "Right")
-            .0
-        {
-            self.control_data[2] |= 0x01 << 5;
-            self.control_data[8] = 0xFF;
-        }
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "Backward")
-            .0
-        {
-            self.control_data[2] |= 0x01 << 6;
-            self.control_data[11] = 0xFF;
-        }
-        if inp_ctx
-            .gamepad_manager
-            .poll_button_binding(player, "Left")
-            .0
-        {
-            self.control_data[2] |= 0x01 << 7;
-            self.control_data[9] = 0xFF;
-        }
+        self.poll_controller_button(inp_ctx, player, "Forward", InternalButton::DPadUp);
+        self.poll_controller_button(inp_ctx, player, "Backward", InternalButton::DPadDown);
+        self.poll_controller_button(inp_ctx, player, "Left", InternalButton::DPadLeft);
+        self.poll_controller_button(inp_ctx, player, "Right", InternalButton::DPadRight);
 
         let camera_stick = inp_ctx
             .gamepad_manager
@@ -375,6 +356,98 @@ impl Device {
             .poll_stick_binding(player, "MovementStick");
         self.control_data[6] = ((movement_stick.0 >> 8) + 128) as u8;
         self.control_data[7] = ((movement_stick.1 >> 8) + 128) as u8;
+
+        // TODO: convert movement stick to d-pad inputs when in menu
+    }
+
+    fn poll_controller_button(
+        &mut self,
+        inp_ctx: &InputContext,
+        player: usize,
+        name: &str,
+        internal_button: InternalButton,
+    ) {
+        let (pressed, pressure) = inp_ctx.gamepad_manager.poll_button_binding(player, name);
+        if pressed {
+            self.update_internal_button(internal_button, pressed, (pressure << 7) as u8);
+        }
+    }
+
+    fn update_internal_button(&mut self, button: InternalButton, pressed: bool, pressure: u8) {
+        match button {
+            InternalButton::Cross => {
+                self.control_data[3] |= (pressed as u8) << 6;
+                let control_pressure = &mut self.control_data[14];
+                *control_pressure = (*control_pressure).max(pressure);
+            }
+            InternalButton::Circle => {
+                self.control_data[3] |= (pressed as u8) << 5;
+                let control_pressure = &mut self.control_data[13];
+                *control_pressure = (*control_pressure).max(pressure);
+            }
+            InternalButton::Square => {
+                self.control_data[3] |= (pressed as u8) << 7;
+                let control_pressure = &mut self.control_data[15];
+                *control_pressure = (*control_pressure).max(pressure);
+            }
+            InternalButton::Triangle => {
+                self.control_data[3] |= (pressed as u8) << 4;
+                let control_pressure = &mut self.control_data[12];
+                *control_pressure = (*control_pressure).max(pressure);
+            }
+            InternalButton::Start => {
+                self.control_data[2] |= (pressed as u8) << 3;
+            }
+            InternalButton::Select => {
+                self.control_data[2] |= (pressed as u8) << 0;
+            }
+            InternalButton::DPadUp => {
+                self.control_data[2] |= (pressed as u8) << 4;
+                let control_pressure = &mut self.control_data[10];
+                *control_pressure = (*control_pressure).max(pressure);
+            }
+            InternalButton::DPadDown => {
+                self.control_data[2] |= (pressed as u8) << 6;
+                let control_pressure = &mut self.control_data[11];
+                *control_pressure = (*control_pressure).max(pressure);
+            }
+            InternalButton::DPadLeft => {
+                self.control_data[2] |= (pressed as u8) << 7;
+                let control_pressure = &mut self.control_data[9];
+                *control_pressure = (*control_pressure).max(pressure);
+            }
+            InternalButton::DPadRight => {
+                self.control_data[2] |= (pressed as u8) << 5;
+                let control_pressure = &mut self.control_data[8];
+                *control_pressure = (*control_pressure).max(pressure);
+            }
+            InternalButton::L1 => {
+                self.control_data[3] |= (pressed as u8) << 2;
+                let control_pressure = &mut self.control_data[16];
+                *control_pressure = (*control_pressure).max(pressure);
+            }
+            InternalButton::R1 => {
+                self.control_data[3] |= (pressed as u8) << 3;
+                let control_pressure = &mut self.control_data[17];
+                *control_pressure = (*control_pressure).max(pressure);
+            }
+            InternalButton::L2 => {
+                self.control_data[3] |= (pressed as u8) << 0;
+                let control_pressure = &mut self.control_data[18];
+                *control_pressure = (*control_pressure).max(pressure);
+            }
+            InternalButton::R2 => {
+                self.control_data[3] |= (pressed as u8) << 1;
+                let control_pressure = &mut self.control_data[19];
+                *control_pressure = (*control_pressure).max(pressure);
+            }
+            InternalButton::L3 => {
+                self.control_data[2] |= (pressed as u8) << 1;
+            }
+            InternalButton::R3 => {
+                self.control_data[2] |= (pressed as u8) << 2;
+            }
+        }
     }
 }
 
@@ -422,4 +495,24 @@ pub unsafe fn patch() {
 
         patch_call(0x0040de19 as *mut (), Device::pause as *const ());
     }
+}
+
+#[allow(unused)]
+enum InternalButton {
+    Cross,
+    Circle,
+    Square,
+    Triangle,
+    Start,
+    Select,
+    DPadUp,
+    DPadDown,
+    DPadLeft,
+    DPadRight,
+    L1,
+    R1,
+    L2,
+    R2,
+    L3,
+    R3,
 }

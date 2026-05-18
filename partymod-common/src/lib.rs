@@ -4,6 +4,7 @@ pub mod console;
 pub mod crc;
 pub mod event;
 pub mod gamepad;
+pub mod keyboard;
 pub mod logger;
 pub mod patch;
 pub mod syncunsafecell;

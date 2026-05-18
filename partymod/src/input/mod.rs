@@ -1,8 +1,10 @@
 use partymod_common::{
-    gamepad::GamepadManager, logger::LogLevel, patch, syncunsafecell::SyncUnsafeCell,
+    gamepad::GamepadManager, keyboard::KeybindManager, logger::LogLevel, patch,
+    syncunsafecell::SyncUnsafeCell,
 };
-use partymod_config::GAMEPAD_BINDS;
+use partymod_config::{GAMEPAD_BINDS, KEYBINDS};
 use partymod_config_common::{Button, Stick};
+use sdl3::keyboard::Scancode;
 
 use crate::{
     config, event,
@@ -13,6 +15,7 @@ use crate::{
 mod device;
 
 pub struct InputContext {
+    keybind_manager: KeybindManager,
     gamepad_manager: GamepadManager,
 }
 
@@ -32,7 +35,8 @@ fn init_context() {
 
         let ctx = &mut *INPUT_CONTEXT.get();
         *ctx = Some(InputContext {
-            gamepad_manager: GamepadManager::new(1, Some(logger)),
+            keybind_manager: KeybindManager::new(Some(logger.clone())),
+            gamepad_manager: GamepadManager::new(1, Some(logger.clone())),
         })
     }
 }
@@ -44,6 +48,19 @@ fn setup_controls() {
             None => panic!("Tried to get uninitialized input context!"),
         }
     };
+
+    for bind in &KEYBINDS {
+        let default = match bind.default {
+            None => -1,
+            Some(v) => v.to_i32(),
+        };
+
+        let key = config::get_int("Keybinds", bind.key, default);
+
+        if let Some(v) = Scancode::from_i32(key) {
+            inp_ctx.keybind_manager.add_button_binding(bind.key, v);
+        }
+    }
 
     for bind in &GAMEPAD_BINDS {
         match &bind.default {
