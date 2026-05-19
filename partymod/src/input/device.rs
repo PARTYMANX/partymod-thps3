@@ -84,6 +84,8 @@ impl Device {
             self.poll_keyboard();
         }
 
+        // TODO: convert movement stick to d-pad inputs when in menu
+
         self.control_data[2] = !self.control_data[2];
         self.control_data[3] = !self.control_data[3];
     }
@@ -253,18 +255,7 @@ impl Device {
             }
         };
 
-        let event_pump = match sdl_ctx.sdl_context.event_pump() {
-            Ok(v) => v,
-            Err(e) => {
-                logger::log(
-                    LogLevel::Error,
-                    &format!("Failed to get keyboard state: {}", e),
-                );
-                return;
-            }
-        };
-
-        let keyboard_state = event_pump.keyboard_state();
+        let keyboard_state = sdl_ctx.event_pump.keyboard_state();
 
         self.poll_keyboard_key(inp_ctx, &keyboard_state, "Pause", InternalButton::Start);
         self.poll_keyboard_key(
@@ -295,7 +286,16 @@ impl Device {
         self.poll_keyboard_key(inp_ctx, &keyboard_state, "Left", InternalButton::DPadLeft);
         self.poll_keyboard_key(inp_ctx, &keyboard_state, "Right", InternalButton::DPadRight);
 
-        // TODO: axes
+        let camera_x =
+            self.keyboard_keys_to_axis(inp_ctx, &keyboard_state, "CameraRight", "CameraLeft");
+        let camera_y =
+            self.keyboard_keys_to_axis(inp_ctx, &keyboard_state, "CameraDown", "CameraUp");
+        (self.control_data[4], self.control_data[5]) = Self::stick_max(
+            self.control_data[4],
+            self.control_data[5],
+            camera_x,
+            camera_y,
+        );
     }
 
     fn poll_keyboard_key(
@@ -313,6 +313,32 @@ impl Device {
 
         if pressed {
             self.update_internal_button(internal_button, pressed, pressure);
+        }
+    }
+
+    fn keyboard_keys_to_axis(
+        &mut self,
+        inp_ctx: &InputContext,
+        keyboard_state: &KeyboardState,
+        name_positive: &str,
+        name_negative: &str,
+    ) -> u8 {
+        let pos = inp_ctx
+            .keybind_manager
+            .poll_button_binding(name_positive, keyboard_state);
+        let neg = inp_ctx
+            .keybind_manager
+            .poll_button_binding(name_negative, keyboard_state);
+
+        if pos && neg {
+            // NOTE: SOCD handling behavior is neutral
+            127
+        } else if pos {
+            255
+        } else if neg {
+            0
+        } else {
+            127
         }
     }
 
@@ -348,16 +374,24 @@ impl Device {
         let camera_stick = inp_ctx
             .gamepad_manager
             .poll_stick_binding(player, "CameraStick");
-        self.control_data[4] = ((camera_stick.0 >> 8) + 128) as u8;
-        self.control_data[5] = ((camera_stick.1 >> 8) + 128) as u8;
+        let camera_x = ((camera_stick.0 >> 8) + 128) as u8;
+        let camera_y = ((camera_stick.1 >> 8) + 128) as u8;
+
+        (self.control_data[4], self.control_data[5]) = Self::stick_max(
+            self.control_data[4],
+            self.control_data[5],
+            camera_x,
+            camera_y,
+        );
 
         let movement_stick = inp_ctx
             .gamepad_manager
             .poll_stick_binding(player, "MovementStick");
-        self.control_data[6] = ((movement_stick.0 >> 8) + 128) as u8;
-        self.control_data[7] = ((movement_stick.1 >> 8) + 128) as u8;
+        let move_x = ((movement_stick.0 >> 8) + 128) as u8;
+        let move_y = ((movement_stick.1 >> 8) + 128) as u8;
 
-        // TODO: convert movement stick to d-pad inputs when in menu
+        (self.control_data[6], self.control_data[7]) =
+            Self::stick_max(self.control_data[6], self.control_data[7], move_x, move_y);
     }
 
     fn poll_controller_button(
@@ -371,6 +405,23 @@ impl Device {
         if pressed {
             self.update_internal_button(internal_button, pressed, (pressure << 7) as u8);
         }
+    }
+
+    fn stick_max(a_x: u8, a_y: u8, b_x: u8, b_y: u8) -> (u8, u8) {
+        // because range is between 0 and 255, take the absolute values
+        let abs_a_x = Self::axis_abs(a_x);
+        let abs_a_y = Self::axis_abs(a_y);
+        let abs_b_x = Self::axis_abs(b_x);
+        let abs_b_y = Self::axis_abs(b_y);
+
+        let a_sq = (abs_a_x as i32 * abs_a_x as i32) + (abs_a_y as i32 * abs_a_y as i32);
+        let b_sq = (abs_b_x as i32 * abs_b_x as i32) + (abs_b_y as i32 * abs_b_y as i32);
+
+        if a_sq >= b_sq { (a_x, a_y) } else { (b_x, b_y) }
+    }
+
+    fn axis_abs(v: u8) -> u8 {
+        if v > 0x7F { v & 0x7F } else { !v & 0x7F }
     }
 
     fn update_internal_button(&mut self, button: InternalButton, pressed: bool, pressure: u8) {

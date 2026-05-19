@@ -4,7 +4,7 @@ use sdl3::keyboard::{KeyboardState, Scancode};
 
 use crate::logger::{LogLevel, Logger};
 
-// handles bindings, polling, and controllers
+// handles bindings for keyboards
 pub struct KeybindManager {
     key_bindings: HashMap<String, Scancode>,
     logger: Option<Arc<dyn Logger>>,

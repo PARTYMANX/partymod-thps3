@@ -2,6 +2,7 @@ use partymod_common::syncunsafecell::SyncUnsafeCell;
 
 pub struct SDLContext {
     pub sdl_context: sdl3::Sdl,
+    pub event_pump: sdl3::EventPump,
     pub video_subsystem: sdl3::VideoSubsystem,
     //pub joystick_subsystem: sdl3::JoystickSubsystem,
     pub gamepad_subsystem: sdl3::GamepadSubsystem,
@@ -14,6 +15,7 @@ pub static SDL_CONTEXT: SyncUnsafeCell<Option<SDLContext>> = SyncUnsafeCell::new
 
 pub fn init() {
     let sdl_context = sdl3::init().unwrap();
+    let event_pump = sdl_context.event_pump().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
     //let joystick_subsystem = sdl_context.joystick().unwrap();
     let gamepad_subsystem = sdl_context.gamepad().unwrap();
@@ -22,6 +24,7 @@ pub fn init() {
         let ctx = &mut *SDL_CONTEXT.get();
         *ctx = Some(SDLContext {
             sdl_context,
+            event_pump,
             video_subsystem,
             //joystick_subsystem,
             gamepad_subsystem,

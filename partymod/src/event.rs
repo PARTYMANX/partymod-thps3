@@ -1,8 +1,6 @@
-use partymod_common::{
-    event::EventManager, logger::LogLevel, patch, syncunsafecell::SyncUnsafeCell,
-};
+use partymod_common::{event::EventManager, patch, syncunsafecell::SyncUnsafeCell};
 
-use crate::{logger, sdl::SDL_CONTEXT};
+use crate::sdl::SDL_CONTEXT;
 
 pub static EVENT_MANAGER_CONTEXT: SyncUnsafeCell<Option<EventManager>> = SyncUnsafeCell::new(None);
 
@@ -30,15 +28,7 @@ fn process_events() {
         }
     };
 
-    let mut event_pump = match sdl_context.sdl_context.event_pump() {
-        Ok(v) => v,
-        Err(e) => {
-            logger::log(LogLevel::Error, &format!("Failed to process events: {}", e));
-            return;
-        }
-    };
-
-    manager.process_events(&mut event_pump);
+    manager.process_events(&mut sdl_context.event_pump);
 }
 
 pub fn register_handler(handler: fn(&sdl3::event::Event)) {

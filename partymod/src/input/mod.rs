@@ -172,6 +172,7 @@ fn event_handler(event: &sdl3::event::Event) {
         .event_handler(event, &sdl_ctx.gamepad_subsystem);
 }
 
+// in-engine manager for controllers. replaces SIO::Manager
 #[repr(C)]
 struct InputManager {
     unk_data: [u32; 7],
