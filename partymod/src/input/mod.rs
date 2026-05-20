@@ -13,10 +13,12 @@ use crate::{
 };
 
 mod device;
+mod keyboard;
 
 pub struct InputContext {
     keybind_manager: KeybindManager,
     gamepad_manager: GamepadManager,
+    keyboard: keyboard::Keyboard,
 }
 
 unsafe impl Sync for InputContext {}
@@ -37,6 +39,7 @@ fn init_context() {
         *ctx = Some(InputContext {
             keybind_manager: KeybindManager::new(Some(logger.clone())),
             gamepad_manager: GamepadManager::new(1, Some(logger.clone())),
+            keyboard: keyboard::Keyboard::new(),
         })
     }
 }
@@ -167,6 +170,8 @@ fn event_handler(event: &sdl3::event::Event) {
         _ => {}
     }
 
+    inp_ctx.keyboard.handle_keyboard_event(event);
+
     inp_ctx
         .gamepad_manager
         .event_handler(event, &sdl_ctx.gamepad_subsystem);
@@ -261,6 +266,7 @@ pub unsafe fn patch() {
         );
 
         device::patch();
+        keyboard::patch();
 
         // always say the window is active
         patch::patch_jmp(0x004090b0 as *mut (), is_window_active as *const ());
