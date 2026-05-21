@@ -16,6 +16,8 @@ pub struct GamepadManager {
     stick_bindings: HashMap<String, Stick>,
     gamepads: Vec<sdl3::gamepad::Gamepad>,
 
+    rumble_enabled: bool,
+
     logger: Option<Arc<dyn Logger>>,
 }
 
@@ -34,6 +36,8 @@ impl GamepadManager {
             button_bindings: HashMap::new(),
             stick_bindings: HashMap::new(),
             gamepads: Vec::new(),
+
+            rumble_enabled: true,
 
             logger,
         }
@@ -233,11 +237,23 @@ impl GamepadManager {
     }
 
     pub fn set_rumble(&mut self, player: usize, high: u16, low: u16) {
+        if !self.rumble_enabled {
+            return;
+        }
+
         let slot = self.player_slots[player];
 
         if let Some(idx) = slot {
             let _ = self.gamepads[idx].set_rumble(low, high, 0);
         }
+    }
+
+    pub fn enable_rumble(&mut self, player: usize, enabled: bool) {
+        if !enabled {
+            self.set_rumble(player, 0, 0);
+        }
+
+        self.rumble_enabled = enabled;
     }
 
     fn set_active(&mut self, idx: usize) {

@@ -9,16 +9,21 @@ use sdl3::keyboard::Scancode;
 use crate::{
     config, event,
     logger::{self, LOGGER_CONTEXT},
-    sdl::SDL_CONTEXT,
+    sdl::{SDL_CONTEXT, SDLContext},
 };
 
 mod device;
 mod keyboard;
+mod parkeditor;
 
 pub struct InputContext {
     keybind_manager: KeybindManager,
     gamepad_manager: GamepadManager,
     keyboard: keyboard::Keyboard,
+    park_editor_state: parkeditor::ParkEditorControlsState,
+
+    is_using_keyboard: bool,
+    is_cursor_visible: bool,
 }
 
 unsafe impl Sync for InputContext {}
@@ -40,6 +45,10 @@ fn init_context() {
             keybind_manager: KeybindManager::new(Some(logger.clone())),
             gamepad_manager: GamepadManager::new(1, Some(logger.clone())),
             keyboard: keyboard::Keyboard::new(),
+            park_editor_state: parkeditor::ParkEditorControlsState::new(),
+
+            is_using_keyboard: true,
+            is_cursor_visible: true,
         })
     }
 }
@@ -112,6 +121,7 @@ fn event_handler(event: &sdl3::event::Event) {
 
     match event {
         sdl3::event::Event::MouseMotion { x, y, .. } => unsafe {
+            set_using_keyboard(inp_ctx, sdl_ctx, true);
             let mouse_move: unsafe extern "C" fn(i16, i16, i16) =
                 std::mem::transmute(0x00405370 as *const ());
 
@@ -120,6 +130,7 @@ fn event_handler(event: &sdl3::event::Event) {
         sdl3::event::Event::MouseButtonDown {
             mouse_btn, x, y, ..
         } => unsafe {
+            set_using_keyboard(inp_ctx, sdl_ctx, true);
             match mouse_btn {
                 sdl3::mouse::MouseButton::Left => {
                     let mouse_left_down: unsafe extern "C" fn(i16, i16, i16) =
@@ -145,6 +156,7 @@ fn event_handler(event: &sdl3::event::Event) {
         sdl3::event::Event::MouseButtonUp {
             mouse_btn, x, y, ..
         } => unsafe {
+            set_using_keyboard(inp_ctx, sdl_ctx, true);
             match mouse_btn {
                 sdl3::mouse::MouseButton::Left => {
                     let mouse_left_up: unsafe extern "C" fn(i16, i16, i16) =
@@ -167,6 +179,12 @@ fn event_handler(event: &sdl3::event::Event) {
                 _ => {}
             }
         },
+        sdl3::event::Event::KeyDown { .. } => {
+            set_using_keyboard(inp_ctx, sdl_ctx, true);
+        }
+        sdl3::event::Event::ControllerButtonDown { .. } => {
+            set_using_keyboard(inp_ctx, sdl_ctx, false);
+        }
         _ => {}
     }
 
@@ -247,6 +265,62 @@ extern "cdecl" fn is_window_active() -> bool {
     true
 }
 
+extern "C" fn set_cursor_active() {
+    let inp_ctx = unsafe {
+        match &mut *INPUT_CONTEXT.get() {
+            Some(v) => v,
+            None => panic!("Tried to get uninitialized input context!"),
+        }
+    };
+
+    let sdl_ctx = unsafe {
+        match &*SDL_CONTEXT.get() {
+            Some(v) => v,
+            None => panic!("Tried to get uninitialized SDL context!"),
+        }
+    };
+
+    inp_ctx.is_cursor_visible = true;
+
+    show_hide_cursor(inp_ctx, sdl_ctx);
+}
+
+extern "C" fn set_cursor_inactive() {
+    let inp_ctx = unsafe {
+        match &mut *INPUT_CONTEXT.get() {
+            Some(v) => v,
+            None => panic!("Tried to get uninitialized input context!"),
+        }
+    };
+
+    let sdl_ctx = unsafe {
+        match &*SDL_CONTEXT.get() {
+            Some(v) => v,
+            None => panic!("Tried to get uninitialized SDL context!"),
+        }
+    };
+
+    inp_ctx.is_cursor_visible = true;
+
+    show_hide_cursor(inp_ctx, sdl_ctx);
+}
+
+fn set_using_keyboard(inp_ctx: &mut InputContext, sdl_ctx: &SDLContext, using_keyboard: bool) {
+    inp_ctx.is_using_keyboard = using_keyboard;
+
+    inp_ctx.gamepad_manager.enable_rumble(0, !using_keyboard);
+
+    show_hide_cursor(inp_ctx, sdl_ctx);
+}
+
+fn show_hide_cursor(inp_ctx: &mut InputContext, sdl_ctx: &SDLContext) {
+    if inp_ctx.is_using_keyboard && inp_ctx.is_cursor_visible {
+        sdl_ctx.sdl_context.mouse().show_cursor(true);
+    } else {
+        sdl_ctx.sdl_context.mouse().show_cursor(false);
+    }
+}
+
 pub unsafe fn patch() {
     unsafe {
         patch::patch_jmp(0x0040db20 as *mut (), InputManager::init as *const ());
@@ -267,8 +341,13 @@ pub unsafe fn patch() {
 
         device::patch();
         keyboard::patch();
+        parkeditor::patch();
 
         // always say the window is active
         patch::patch_jmp(0x004090b0 as *mut (), is_window_active as *const ());
+
+        // cursor handling
+        patch::patch_jmp(0x00405780 as *mut (), set_cursor_active as *const ());
+        patch::patch_jmp(0x004057c0 as *mut (), set_cursor_inactive as *const ());
     }
 }
