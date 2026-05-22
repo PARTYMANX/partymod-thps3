@@ -4,7 +4,11 @@ use partymod_common::{
 };
 use sdl3::keyboard::KeyboardState;
 
-use crate::{input::InputContext, logger, sdl::SDL_CONTEXT};
+use crate::{
+    input::{InputContext, is_menu_open, keyboard::is_keyboard_on_screen},
+    logger,
+    sdl::SDL_CONTEXT,
+};
 
 #[repr(C)]
 pub struct Device {
@@ -23,16 +27,16 @@ pub struct Device {
     paused: u32,
     actuators_disabled: u32,
     capabilities: u32,
-    unk3: u32,
+    unk2: u32,
     num_actuators: u32,
-    unk4: u32,
+    unk3: u32,
     state: u32,
     next_state: u32,
     index: u32,
     is_plugged_in: u32,
     device_interface: u32,
+    unk4: u32,
     unk5: u32,
-    unk6: u32,
 }
 
 impl Device {
@@ -242,7 +246,7 @@ impl Device {
 
     fn poll_keyboard(&mut self) {
         let inp_ctx = unsafe {
-            match &*super::INPUT_CONTEXT.get() {
+            match &mut *super::INPUT_CONTEXT.get() {
                 Some(v) => v,
                 None => panic!("Tried to get uninitialized input context!"),
             }
@@ -256,6 +260,15 @@ impl Device {
         };
 
         let keyboard_state = sdl_ctx.event_pump.keyboard_state();
+
+        let in_menu = is_menu_open();
+        inp_ctx
+            .keybind_manager
+            .set_in_menu(in_menu, &keyboard_state);
+
+        if is_keyboard_on_screen() {
+            return;
+        }
 
         self.poll_keyboard_key(inp_ctx, &keyboard_state, "Pause", InternalButton::Start);
         self.poll_keyboard_key(
@@ -300,14 +313,14 @@ impl Device {
 
     fn poll_keyboard_key(
         &mut self,
-        inp_ctx: &InputContext,
+        inp_ctx: &mut InputContext,
         keyboard_state: &KeyboardState,
         name: &str,
         internal_button: InternalButton,
     ) {
         let pressed = inp_ctx
             .keybind_manager
-            .poll_button_binding(name, keyboard_state);
+            .poll_key_binding(name, keyboard_state);
 
         let pressure = if pressed { 0xFF } else { 0x00 };
 
@@ -318,17 +331,17 @@ impl Device {
 
     fn keyboard_keys_to_axis(
         &mut self,
-        inp_ctx: &InputContext,
+        inp_ctx: &mut InputContext,
         keyboard_state: &KeyboardState,
         name_positive: &str,
         name_negative: &str,
     ) -> u8 {
         let pos = inp_ctx
             .keybind_manager
-            .poll_button_binding(name_positive, keyboard_state);
+            .poll_key_binding(name_positive, keyboard_state);
         let neg = inp_ctx
             .keybind_manager
-            .poll_button_binding(name_negative, keyboard_state);
+            .poll_key_binding(name_negative, keyboard_state);
 
         if pos && neg {
             // NOTE: SOCD handling behavior is neutral

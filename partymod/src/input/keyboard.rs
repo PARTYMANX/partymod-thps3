@@ -138,6 +138,23 @@ pub extern "C" fn keyboard_frame(update: bool) {
     }
 }
 
+pub fn is_keyboard_on_screen() -> bool {
+    unsafe {
+        let get_menu_factory: unsafe extern "C" fn(bool) -> *const () =
+            std::mem::transmute(0x004d12a0 as *const ());
+        let release_menu_factory: unsafe extern "C" fn() =
+            std::mem::transmute(0x004d12f0 as *const ());
+
+        let menu_factory = get_menu_factory(false);
+
+        let result = *(menu_factory.byte_add(0x154) as *const bool);
+
+        release_menu_factory();
+
+        result
+    }
+}
+
 pub unsafe fn patch() {
     unsafe {
         patch_jmp(0x00403bf0 as *mut (), keyboard_frame as *const ());

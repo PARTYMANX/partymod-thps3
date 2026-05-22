@@ -70,7 +70,7 @@ fn setup_controls() {
         let key = config::get_int("Keybinds", bind.key, default);
 
         if let Some(v) = Scancode::from_i32(key) {
-            inp_ctx.keybind_manager.add_button_binding(bind.key, v);
+            inp_ctx.keybind_manager.add_key_binding(bind.key, v);
         }
     }
 
@@ -318,6 +318,15 @@ fn show_hide_cursor(inp_ctx: &mut InputContext, sdl_ctx: &SDLContext) {
         sdl_ctx.sdl_context.mouse().show_cursor(true);
     } else {
         sdl_ctx.sdl_context.mouse().show_cursor(false);
+    }
+}
+
+fn is_menu_open() -> bool {
+    unsafe {
+        let menu_is_open: unsafe extern "C" fn() -> bool =
+            std::mem::transmute(0x0044a540 as *const ());
+
+        menu_is_open()
     }
 }
 

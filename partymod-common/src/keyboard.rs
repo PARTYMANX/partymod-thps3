@@ -6,8 +6,23 @@ use crate::logger::{LogLevel, Logger};
 
 // handles bindings for keyboards
 pub struct KeybindManager {
-    key_bindings: HashMap<String, Scancode>,
+    key_bindings: HashMap<String, Keybind>,
+    keys_bound: HashMap<Scancode, String>,
+    menu_bindings: HashMap<String, MenuBinding>,
+    in_menu: bool,
+
     logger: Option<Arc<dyn Logger>>,
+}
+
+struct Keybind {
+    key: Scancode,
+    locked_out: bool,
+}
+
+struct MenuBinding {
+    key: Scancode,
+    overlay: Option<String>,
+    locked_out: bool,
 }
 
 impl KeybindManager {
@@ -15,57 +30,102 @@ impl KeybindManager {
     pub fn new(logger: Option<Arc<dyn Logger>>) -> Self {
         Self {
             key_bindings: HashMap::new(),
+            keys_bound: HashMap::new(),
+            menu_bindings: HashMap::new(),
+            in_menu: false,
 
             logger,
         }
     }
 
-    pub fn add_button_binding(&mut self, name: &str, key: Scancode) {
-        self.key_bindings.insert(name.to_owned(), key);
+    pub fn add_key_binding(&mut self, name: &str, key: Scancode) {
+        self.key_bindings.insert(
+            name.to_owned(),
+            Keybind {
+                key,
+                locked_out: false,
+            },
+        );
+        self.keys_bound.insert(key, name.to_owned());
     }
 
-    pub fn poll_button_binding(&self, name: &str, keyboard_state: &KeyboardState) -> bool {
-        let binding = match self.key_bindings.get(name) {
+    pub fn poll_key_binding(&mut self, name: &str, keyboard_state: &KeyboardState) -> bool {
+        let binding = match self.key_bindings.get_mut(name) {
             Some(v) => v,
             None => return false,
         };
 
-        keyboard_state.is_scancode_pressed(*binding)
-    }
+        let down = keyboard_state.is_scancode_pressed(binding.key);
 
-    /*
-    pub fn event_handler(
-        &mut self,
-        event: &sdl3::event::Event,
-        gamepad_subsystem: &sdl3::GamepadSubsystem,
-    ) {
-        match event {
-            sdl3::event::Event::ControllerDeviceAdded { which, .. } => {
-                self.add_controller(*which, gamepad_subsystem);
-            }
-            sdl3::event::Event::ControllerDeviceRemoved { which, .. } => {
-                self.remove_controller(*which);
-            }
-            sdl3::event::Event::ControllerButtonDown { which, .. } => {
-                // find the controller in our list
-                let mut found = None;
-                for (i, gamepad) in self.gamepads.iter().enumerate() {
-                    if gamepad.id().unwrap().0 == *which {
-                        found = Some(i);
-                        break;
-                    }
+        match binding.locked_out {
+            false => down,
+            true => {
+                if !down {
+                    binding.locked_out = false;
                 }
 
-                if let Some(idx) = found {
-                    if self.max_players == 1 {
-                        self.set_active(idx);
-                    } else {
-                        self.add_player(idx);
-                    }
-                }
+                false
             }
-            _ => {}
         }
     }
-    */
+
+    pub fn add_menu_binding(&mut self, name: &str, key: Scancode, action: &str) {
+        // find the bind that this overlays, if any
+        let overlay = match self.keys_bound.get(&key) {
+            Some(v) => {
+                if v != action {
+                    Some(v.clone())
+                } else {
+                    None
+                }
+            }
+            None => None,
+        };
+
+        self.menu_bindings.insert(
+            name.to_owned(),
+            MenuBinding {
+                key,
+                overlay,
+                locked_out: false,
+            },
+        );
+    }
+
+    pub fn poll_menu_binding(&mut self, name: &str, keyboard_state: &KeyboardState) -> bool {
+        let binding = match self.menu_bindings.get_mut(name) {
+            Some(v) => v,
+            None => return false,
+        };
+
+        let down = keyboard_state.is_scancode_pressed(binding.key);
+
+        match binding.locked_out {
+            false => down,
+            true => {
+                if !down {
+                    binding.locked_out = false;
+                }
+
+                false
+            }
+        }
+    }
+
+    pub fn set_in_menu(&mut self, enabled: bool, keyboard_state: &KeyboardState) {
+        if enabled == self.in_menu {
+            return;
+        }
+
+        for (_, menu_binding) in &mut self.menu_bindings {
+            let down = keyboard_state.is_scancode_pressed(menu_binding.key);
+
+            if down && let Some(overlay_name) = &menu_binding.overlay {
+                menu_binding.locked_out = true;
+
+                let overlay_binding = self.key_bindings.get_mut(overlay_name).unwrap();
+                overlay_binding.locked_out = true;
+            }
+        }
+    }
 }
