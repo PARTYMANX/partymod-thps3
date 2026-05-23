@@ -1,4 +1,4 @@
-use partymod_common::patch::patch_jmp;
+use partymod_common::{keyboard::KeybindManager, patch::patch_jmp};
 use sdl3::{
     keyboard::{Mod, Scancode},
     sys::{keyboard::SDL_GetKeyFromScancode, keycode::SDL_Keymod},
@@ -28,7 +28,7 @@ impl Keyboard {
         }
     }
 
-    fn update_keys_down(&mut self) {
+    fn update_keys_down(&mut self, keybind_manager: &KeybindManager) {
         unsafe {
             let key_makes = 0x005d030c as *mut [u8; 256];
             let key_makes_count = 0x005d0300 as *mut u32;
@@ -36,6 +36,20 @@ impl Keyboard {
             *key_makes_count = 0;
 
             for key in &self.keys_down {
+                let locked = match *key {
+                    25 => {
+                        keybind_manager.is_menu_key_locked("Accept") ||
+                        keybind_manager.is_menu_key_locked("Accept2")
+                    },
+                    26 => keybind_manager.is_menu_key_locked("Back"),
+                    _ => false,
+                };
+
+                if locked {
+                    // key is locked, skip
+                    continue;
+                }
+
                 (*key_makes)[(*key_makes_count) as usize] = *key;
                 *key_makes_count += 1;
 
@@ -133,7 +147,7 @@ pub extern "C" fn keyboard_frame(update: bool) {
                 None => panic!("Tried to get uninitialized input context!"),
             };
 
-            inp_ctx.keyboard.update_keys_down();
+            inp_ctx.keyboard.update_keys_down(&inp_ctx.keybind_manager);
         }
     }
 }

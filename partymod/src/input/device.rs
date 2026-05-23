@@ -270,6 +270,19 @@ impl Device {
             return;
         }
 
+        if in_menu {
+            // polls with ignored results to update lock state
+            inp_ctx.keybind_manager.poll_menu_binding("Accept", &keyboard_state);
+            inp_ctx.keybind_manager.poll_menu_binding("Accept2", &keyboard_state);
+            inp_ctx.keybind_manager.poll_menu_binding("Back", &keyboard_state);
+
+            // okay, actual menu controls now
+            self.poll_menu_key(inp_ctx, &keyboard_state, "Up", InternalButton::DPadUp);
+            self.poll_menu_key(inp_ctx, &keyboard_state, "Down", InternalButton::DPadDown);
+            self.poll_menu_key(inp_ctx, &keyboard_state, "Left", InternalButton::DPadLeft);
+            self.poll_menu_key(inp_ctx, &keyboard_state, "Right", InternalButton::DPadRight);
+        }
+
         self.poll_keyboard_key(inp_ctx, &keyboard_state, "Pause", InternalButton::Start);
         self.poll_keyboard_key(
             inp_ctx,
@@ -321,6 +334,24 @@ impl Device {
         let pressed = inp_ctx
             .keybind_manager
             .poll_key_binding(name, keyboard_state);
+
+        let pressure = if pressed { 0xFF } else { 0x00 };
+
+        if pressed {
+            self.update_internal_button(internal_button, pressed, pressure);
+        }
+    }
+
+    fn poll_menu_key(
+        &mut self,
+        inp_ctx: &mut InputContext,
+        keyboard_state: &KeyboardState,
+        name: &str,
+        internal_button: InternalButton,
+    ) {
+        let pressed = inp_ctx
+            .keybind_manager
+            .poll_menu_binding(name, keyboard_state);
 
         let pressure = if pressed { 0xFF } else { 0x00 };
 

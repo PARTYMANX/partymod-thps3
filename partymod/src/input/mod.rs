@@ -74,6 +74,14 @@ fn setup_controls() {
         }
     }
 
+    inp_ctx.keybind_manager.add_menu_binding("Accept", Scancode::Return, "Ollie");
+    inp_ctx.keybind_manager.add_menu_binding("Accept2", Scancode::KpEnter, "Ollie");
+    inp_ctx.keybind_manager.add_menu_binding("Back", Scancode::Escape, "Grind");
+    inp_ctx.keybind_manager.add_menu_binding("Up", Scancode::Up, "Forward");
+    inp_ctx.keybind_manager.add_menu_binding("Down", Scancode::Down, "Backward");
+    inp_ctx.keybind_manager.add_menu_binding("Left", Scancode::Left, "Left");
+    inp_ctx.keybind_manager.add_menu_binding("Right", Scancode::Right, "Right");
+
     for bind in &GAMEPAD_BINDS {
         match &bind.default {
             partymod_config_common::BindType::Button { value } => {
