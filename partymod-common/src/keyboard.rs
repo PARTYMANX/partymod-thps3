@@ -1,8 +1,6 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use sdl3::keyboard::{KeyboardState, Scancode};
-
-use crate::logger::{LogLevel, Logger};
 
 // handles bindings for keyboards
 pub struct KeybindManager {
@@ -10,8 +8,6 @@ pub struct KeybindManager {
     keys_bound: HashMap<Scancode, String>,
     menu_bindings: HashMap<String, MenuBinding>,
     in_menu: bool,
-
-    logger: Option<Arc<dyn Logger>>,
 }
 
 struct Keybind {
@@ -27,14 +23,12 @@ struct MenuBinding {
 
 impl KeybindManager {
     // TODO: logging
-    pub fn new(logger: Option<Arc<dyn Logger>>) -> Self {
+    pub fn new() -> Self {
         Self {
             key_bindings: HashMap::new(),
             keys_bound: HashMap::new(),
             menu_bindings: HashMap::new(),
             in_menu: false,
-
-            logger,
         }
     }
 

@@ -92,7 +92,7 @@ pub unsafe fn patch_bytes(addr: *mut (), bytes: &[u8]) {
     }
 }
 
-pub unsafe fn patch_dword(addr: *mut (), val: u32) {
+pub unsafe fn patch_u32(addr: *mut (), val: u32) {
     unsafe {
         let mut old_protect = 0;
         windows_sys::Win32::System::Memory::VirtualProtect(

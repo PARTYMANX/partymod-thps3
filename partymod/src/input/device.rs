@@ -1,11 +1,11 @@
-use partymod_common::{
-    logger::LogLevel,
-    patch::{patch_call, patch_jmp},
-};
+use partymod_common::{logger::LogLevel, patch};
 use sdl3::keyboard::KeyboardState;
 
 use crate::{
-    input::{InputContext, is_menu_open, keyboard::is_keyboard_on_screen},
+    input::{
+        InputContext, is_menu_open,
+        keyboard::{is_keyboard_on_screen, is_network_menu_on_screen},
+    },
     logger,
     sdl::SDL_CONTEXT,
 };
@@ -82,13 +82,34 @@ impl Device {
         self.control_data[6] = 127;
         self.control_data[7] = 127;
 
-        self.poll_controller();
+        if !is_network_menu_on_screen() {
+            self.poll_controller();
 
-        if self.slot == 0 {
-            self.poll_keyboard();
+            if self.slot == 0 {
+                self.poll_keyboard();
+            }
+        } else {
+            self.poll_controller_network_menu();
         }
 
         // TODO: convert movement stick to d-pad inputs when in menu
+        if is_menu_open() {
+            if self.control_data[6] < 64 {
+                self.control_data[2] |= 0x01 << 7;
+                self.control_data[9] = 0xFF;
+            } else if self.control_data[6] > (255 - 64) {
+                self.control_data[2] |= 0x01 << 5;
+                self.control_data[8] = 0xFF;
+            }
+
+            if self.control_data[7] < 64 {
+                self.control_data[2] |= 0x01 << 4;
+                self.control_data[10] = 0xFF;
+            } else if self.control_data[7] > (255 - 64) {
+                self.control_data[2] |= 0x01 << 6;
+                self.control_data[11] = 0xFF;
+            }
+        }
 
         self.control_data[2] = !self.control_data[2];
         self.control_data[3] = !self.control_data[3];
@@ -272,9 +293,15 @@ impl Device {
 
         if in_menu {
             // polls with ignored results to update lock state
-            inp_ctx.keybind_manager.poll_menu_binding("Accept", &keyboard_state);
-            inp_ctx.keybind_manager.poll_menu_binding("Accept2", &keyboard_state);
-            inp_ctx.keybind_manager.poll_menu_binding("Back", &keyboard_state);
+            inp_ctx
+                .keybind_manager
+                .poll_menu_binding("Accept", &keyboard_state);
+            inp_ctx
+                .keybind_manager
+                .poll_menu_binding("Accept2", &keyboard_state);
+            inp_ctx
+                .keybind_manager
+                .poll_menu_binding("Back", &keyboard_state);
 
             // okay, actual menu controls now
             self.poll_menu_key(inp_ctx, &keyboard_state, "Up", InternalButton::DPadUp);
@@ -388,13 +415,23 @@ impl Device {
 
     fn poll_controller(&mut self) {
         let inp_ctx = unsafe {
-            match &*super::INPUT_CONTEXT.get() {
+            match &mut *super::INPUT_CONTEXT.get() {
                 Some(v) => v,
                 None => panic!("Tried to get uninitialized input context!"),
             }
         };
 
         let player = self.slot as usize;
+
+        if inp_ctx.network_menu_exit_debounce {
+            if !inp_ctx
+                .gamepad_manager
+                .poll_button_binding(player, "Grind")
+                .0
+            {
+                inp_ctx.network_menu_exit_debounce = false;
+            }
+        }
 
         self.poll_controller_button(inp_ctx, player, "Pause", InternalButton::Start);
         self.poll_controller_button(inp_ctx, player, "ViewToggle", InternalButton::Select);
@@ -436,6 +473,28 @@ impl Device {
 
         (self.control_data[6], self.control_data[7]) =
             Self::stick_max(self.control_data[6], self.control_data[7], move_x, move_y);
+
+        if inp_ctx.network_menu_exit_debounce {
+            self.control_data[3] &= !(0x01 << 4);
+        }
+    }
+
+    fn poll_controller_network_menu(&mut self) {
+        let inp_ctx = unsafe {
+            match &mut *super::INPUT_CONTEXT.get() {
+                Some(v) => v,
+                None => panic!("Tried to get uninitialized input context!"),
+            }
+        };
+
+        if inp_ctx.network_menu_exit_debounce {
+            return;
+        }
+
+        if inp_ctx.gamepad_manager.poll_button_binding(0, "Grind").0 {
+            inp_ctx.network_menu_exit_debounce = true;
+            inp_ctx.keyboard.push_esc_down();
+        }
     }
 
     fn poll_controller_button(
@@ -548,47 +607,47 @@ impl Device {
 
 pub unsafe fn patch() {
     unsafe {
-        patch_jmp(0x0040c570 as *mut (), Device::process as *const ());
-        patch_jmp(0x0040d010 as *mut (), Device::acquire as *const ());
-        patch_jmp(0x0040d060 as *mut (), Device::unacquire as *const ());
-        patch_jmp(0x0040d0a0 as *mut (), Device::init as *const ());
-        patch_jmp(0x0040d390 as *mut (), Device::release as *const ());
+        patch::patch_jmp(0x0040c570 as *mut (), Device::process as *const ());
+        patch::patch_jmp(0x0040d010 as *mut (), Device::acquire as *const ());
+        patch::patch_jmp(0x0040d060 as *mut (), Device::unacquire as *const ());
+        patch::patch_jmp(0x0040d0a0 as *mut (), Device::init as *const ());
+        patch::patch_jmp(0x0040d390 as *mut (), Device::release as *const ());
 
-        patch_jmp(0x0040d3c0 as *mut (), Device::reset_actuators as *const ());
+        patch::patch_jmp(0x0040d3c0 as *mut (), Device::reset_actuators as *const ());
 
         // ActivateActuators was optimized into a different call
         // restore each individual call
-        patch_call(
+        patch::patch_call(
             0x004a90fb as *mut (),
             Device::activate_actuator as *const (),
         );
-        patch_call(
+        patch::patch_call(
             0x004ac37f as *mut (),
             Device::activate_actuator as *const (),
         );
-        patch_call(
+        patch::patch_call(
             0x004ac390 as *mut (),
             Device::activate_actuator as *const (),
         );
-        patch_call(
+        patch::patch_call(
             0x004b18f2 as *mut (),
             Device::activate_actuator as *const (),
         );
-        patch_call(
+        patch::patch_call(
             0x004b191d as *mut (),
             Device::activate_actuator as *const (),
         );
-        patch_call(
+        patch::patch_call(
             0x004a9141 as *mut (),
             Device::activate_actuator as *const (),
         );
 
         // same deal with all of these but they were only ever called once
-        patch_call(0x004c0f03 as *mut (), Device::enable_actuators as *const ());
+        patch::patch_call(0x004c0f03 as *mut (), Device::enable_actuators as *const ());
 
-        patch_call(0x0040de99 as *mut (), Device::unpause as *const ());
+        patch::patch_call(0x0040de99 as *mut (), Device::unpause as *const ());
 
-        patch_call(0x0040de19 as *mut (), Device::pause as *const ());
+        patch::patch_call(0x0040de19 as *mut (), Device::pause as *const ());
     }
 }
 

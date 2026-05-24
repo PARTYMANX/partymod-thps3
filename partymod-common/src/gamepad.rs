@@ -136,7 +136,7 @@ impl GamepadManager {
         }
     }
 
-    pub fn poll_button_binding_all(&self, binding: &Button) -> (bool, i16) {
+    fn poll_button_binding_all(&self, binding: &Button) -> (bool, i16) {
         let mut result = (false, 0);
 
         let button = SDLButton::from(binding);

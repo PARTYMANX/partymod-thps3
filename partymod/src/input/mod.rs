@@ -24,6 +24,7 @@ pub struct InputContext {
 
     is_using_keyboard: bool,
     is_cursor_visible: bool,
+    network_menu_exit_debounce: bool, // for exiting network menus on gamepad
 }
 
 unsafe impl Sync for InputContext {}
@@ -42,13 +43,14 @@ fn init_context() {
 
         let ctx = &mut *INPUT_CONTEXT.get();
         *ctx = Some(InputContext {
-            keybind_manager: KeybindManager::new(Some(logger.clone())),
+            keybind_manager: KeybindManager::new(),
             gamepad_manager: GamepadManager::new(1, Some(logger.clone())),
             keyboard: keyboard::Keyboard::new(),
             park_editor_state: parkeditor::ParkEditorControlsState::new(),
 
             is_using_keyboard: true,
             is_cursor_visible: true,
+            network_menu_exit_debounce: false,
         })
     }
 }
@@ -70,17 +72,37 @@ fn setup_controls() {
         let key = config::get_int("Keybinds", bind.key, default);
 
         if let Some(v) = Scancode::from_i32(key) {
+            if v == Scancode::Escape && bind.key == "Pause" {
+                // Don't bind escape to pause.
+                // The default behavior is assumed to be what the user wants.
+                continue;
+            }
+
             inp_ctx.keybind_manager.add_key_binding(bind.key, v);
         }
     }
 
-    inp_ctx.keybind_manager.add_menu_binding("Accept", Scancode::Return, "Ollie");
-    inp_ctx.keybind_manager.add_menu_binding("Accept2", Scancode::KpEnter, "Ollie");
-    inp_ctx.keybind_manager.add_menu_binding("Back", Scancode::Escape, "Grind");
-    inp_ctx.keybind_manager.add_menu_binding("Up", Scancode::Up, "Forward");
-    inp_ctx.keybind_manager.add_menu_binding("Down", Scancode::Down, "Backward");
-    inp_ctx.keybind_manager.add_menu_binding("Left", Scancode::Left, "Left");
-    inp_ctx.keybind_manager.add_menu_binding("Right", Scancode::Right, "Right");
+    inp_ctx
+        .keybind_manager
+        .add_menu_binding("Accept", Scancode::Return, "Ollie");
+    inp_ctx
+        .keybind_manager
+        .add_menu_binding("Accept2", Scancode::KpEnter, "Ollie");
+    inp_ctx
+        .keybind_manager
+        .add_menu_binding("Back", Scancode::Escape, "Grind");
+    inp_ctx
+        .keybind_manager
+        .add_menu_binding("Up", Scancode::Up, "Forward");
+    inp_ctx
+        .keybind_manager
+        .add_menu_binding("Down", Scancode::Down, "Backward");
+    inp_ctx
+        .keybind_manager
+        .add_menu_binding("Left", Scancode::Left, "Left");
+    inp_ctx
+        .keybind_manager
+        .add_menu_binding("Right", Scancode::Right, "Right");
 
     for bind in &GAMEPAD_BINDS {
         match &bind.default {
@@ -338,6 +360,49 @@ fn is_menu_open() -> bool {
     }
 }
 
+pub unsafe extern "C" fn viewer_shift_logic_code_wrapper(viewer: *mut ()) {
+    unsafe {
+        let orig_func: unsafe extern "C" fn(*mut ()) = std::mem::transmute(0x0042ede0 as *const ());
+
+        let script_get_int: unsafe extern "C" fn(*const std::ffi::c_char, u32) -> u32 =
+            std::mem::transmute(0x00426410 as *const ());
+
+        let run_script: unsafe extern "C" fn(*const std::ffi::c_char, u32, u32, u32) -> u32 =
+            std::mem::transmute(0x00428240 as *const ());
+
+        if script_get_int(c"select_shift".as_ptr(), 1) == 0 {
+            let buttons_offset = (*(viewer.byte_add(0x1c) as *mut *mut u32)).byte_add(0x2f8);
+
+            if (*buttons_offset) & 0x100 != 0 {
+                run_script(c"UserSelectSelect".as_ptr(), 0, 0, 0);
+            }
+        }
+
+        orig_func(viewer);
+    }
+}
+
+pub unsafe extern "C" fn toggle_skater_cam_wrapper(params: *mut (), script: *mut ()) {
+    unsafe {
+        let orig_func: unsafe extern "C" fn(*mut (), *mut ()) =
+            std::mem::transmute(0x0041cae0 as *const ());
+
+        let get_integer: unsafe extern "thiscall" fn(
+            *mut (),
+            *const std::ffi::c_char,
+            &mut u32,
+            *const (),
+        ) = std::mem::transmute(0x00429920 as *const ());
+
+        let mut skater = u32::MAX;
+        get_integer(params, c"skater".as_ptr(), &mut skater, std::ptr::null());
+
+        if skater == 0 {
+            orig_func(params, script);
+        }
+    }
+}
+
 pub unsafe fn patch() {
     unsafe {
         patch::patch_jmp(0x0040db20 as *mut (), InputManager::init as *const ());
@@ -366,5 +431,15 @@ pub unsafe fn patch() {
         // cursor handling
         patch::patch_jmp(0x00405780 as *mut (), set_cursor_active as *const ());
         patch::patch_jmp(0x004057c0 as *mut (), set_cursor_inactive as *const ());
+
+        // make skater cam trigger only once
+        patch::patch_u32(
+            0x005b7a6c as *mut (),
+            (toggle_skater_cam_wrapper as *const ()).addr() as u32,
+        );
+        patch::patch_u32(
+            (0x00430617 + 3) as *mut (),
+            (viewer_shift_logic_code_wrapper as *const ()).addr() as u32,
+        );
     }
 }

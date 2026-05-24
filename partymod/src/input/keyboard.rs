@@ -38,9 +38,9 @@ impl Keyboard {
             for key in &self.keys_down {
                 let locked = match *key {
                     25 => {
-                        keybind_manager.is_menu_key_locked("Accept") ||
-                        keybind_manager.is_menu_key_locked("Accept2")
-                    },
+                        keybind_manager.is_menu_key_locked("Accept")
+                            || keybind_manager.is_menu_key_locked("Accept2")
+                    }
                     26 => keybind_manager.is_menu_key_locked("Back"),
                     _ => false,
                 };
@@ -60,6 +60,10 @@ impl Keyboard {
 
             self.keys_down.clear();
         }
+    }
+
+    pub fn push_esc_down(&mut self) {
+        self.handle_key_down(&Scancode::Escape, &Mod::empty());
     }
 
     fn handle_key_down(&mut self, scancode: &Scancode, keymod: &Mod) {
@@ -164,6 +168,25 @@ pub fn is_keyboard_on_screen() -> bool {
         let result = *(menu_factory.byte_add(0x154) as *const bool);
 
         release_menu_factory();
+
+        result
+    }
+}
+
+pub fn is_network_menu_on_screen() -> bool {
+    unsafe {
+        let get_menu_something: unsafe extern "C" fn(bool) -> *const () =
+            std::mem::transmute(0x004f05b0 as *const ());
+        let release_menu_something: unsafe extern "C" fn() =
+            std::mem::transmute(0x004f0600 as *const ());
+        let is_menu_open: unsafe extern "thiscall" fn(*const ()) -> bool =
+            std::mem::transmute(0x004f17d0 as *const ());
+
+        let menu_something = get_menu_something(false);
+
+        let result = is_menu_open(menu_something);
+
+        release_menu_something();
 
         result
     }
