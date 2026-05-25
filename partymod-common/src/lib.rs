@@ -7,5 +7,6 @@ pub mod gamepad;
 pub mod keyboard;
 pub mod logger;
 pub mod patch;
+pub mod prng;
 pub mod syncunsafecell;
 pub mod window;

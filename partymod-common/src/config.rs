@@ -49,7 +49,8 @@ impl ConfigFile {
         };
 
         if result != 0 {
-            String::from_utf8(result_buf.to_vec()).unwrap()
+            let result_slice = &result_buf[0..result as usize];
+            String::from_utf8(result_slice.to_vec()).unwrap()
         } else {
             panic!("Failed to parse utf8 string");
         }

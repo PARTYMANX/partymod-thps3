@@ -2,15 +2,19 @@ use partymod_common::patch;
 
 mod config;
 mod event;
+mod gameplay;
 mod input;
 mod logger;
+mod misc;
+mod net;
 mod sdl;
 mod settings;
+mod sfx;
 mod window;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-extern "C" fn init_patch() {
+fn init_patch() {
     let exe_path = match std::env::current_exe() {
         Ok(exe_path) => exe_path,
         Err(e) => panic!("failed to get current exe path: {e}"),
@@ -32,13 +36,22 @@ extern "C" fn init_patch() {
 
     event::register_handler(handle_exit_event);
     event::register_handler(window::handle_event);
-    //event::register_handler(input::handle_event);
+    // NOTE: input event handler is registered when input is initialized
 
     if config::get_bool("Miscellaneous", "Debug", false) {
         partymod_common::console::init_console();
     }
 
     println!("PARTYMOD for THPS3 {}", VERSION);
+
+    net::init();
+    misc::init();
+}
+
+extern "C" fn init_and_get_version() -> u32 {
+    init_patch();
+
+    net::get_server_version()
 }
 
 fn handle_exit_event(e: &sdl3::event::Event) {
@@ -58,12 +71,12 @@ fn handle_exit_event(e: &sdl3::event::Event) {
 unsafe fn patch_init() {
     unsafe {
         // patch in a call to our initialization function
-        // replaces the launcher check/startup
+        patch::patch_jmp(0x00411d70 as *mut (), init_and_get_version as *const ());
+
+        // remove the launcher check/startup
         patch::patch_nop(0x0040b9da as *mut (), 7); // remove call to run launcher
         patch::patch_byte(0x0040b9e1 as *mut (), 0xeb); // change launcher branch from JZ to JMP
         patch::patch_nop(0x0040b9fc as *mut (), 12); // remove call to change registry
-
-        patch::patch_call(0x0040b9da as *mut (), init_patch as *const ()); // use now unused space to call our init func
     }
 }
 
@@ -77,8 +90,6 @@ unsafe fn patch_fast_quit() {
         patch::patch_call(0x0040ae28 as *mut (), fast_quit as *const ());
     }
 }
-
-// TODO: patch 00411d70 to return a version number (default should be 0x00010001)
 
 //#[unsafe(export_name = "DllMain")]
 #[unsafe(no_mangle)]
@@ -94,6 +105,10 @@ pub extern "stdcall" fn DllMain(_hinst_dll: usize, fdw_reason: u32, _lp_reserved
 
                 patch::patch_nop(0x004079a8 as *mut (), 0x004079f4 + 5 - 0x004079a8); // TEMPORARY - remove video playback
                 input::patch();
+
+                gameplay::patch();
+                sfx::patch();
+                misc::patch();
             }
         }
         windows_sys::Win32::System::SystemServices::DLL_THREAD_ATTACH => {}
