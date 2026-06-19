@@ -42,6 +42,8 @@ unsafe fn patch_ledge_warp() {
     }
 }
 
+// TODO: trick limit, tag limit
+
 pub unsafe fn patch() {
     unsafe {
         patch_ledge_warp();

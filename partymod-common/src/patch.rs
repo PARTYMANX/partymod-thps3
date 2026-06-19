@@ -113,6 +113,27 @@ pub unsafe fn patch_u32(addr: *mut (), val: u32) {
     }
 }
 
+pub unsafe fn patch_f32(addr: *mut (), val: f32) {
+    unsafe {
+        let mut old_protect = 0;
+        windows_sys::Win32::System::Memory::VirtualProtect(
+            addr as *mut std::ffi::c_void,
+            5,
+            windows_sys::Win32::System::Memory::PAGE_EXECUTE_READWRITE,
+            &mut old_protect,
+        );
+
+        std::ptr::write(addr as *mut f32, val);
+
+        windows_sys::Win32::System::Memory::VirtualProtect(
+            addr as *mut std::ffi::c_void,
+            5,
+            old_protect,
+            std::ptr::null_mut(),
+        );
+    }
+}
+
 pub unsafe fn patch_nop(addr: *mut (), count: usize) {
     unsafe {
         let mut old_protect = 0;

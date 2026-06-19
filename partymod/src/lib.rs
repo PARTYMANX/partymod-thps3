@@ -2,7 +2,9 @@ use partymod_common::patch;
 
 mod config;
 mod event;
+mod file;
 mod gameplay;
+mod gfx;
 mod input;
 mod logger;
 mod misc;
@@ -32,6 +34,7 @@ fn init_patch() {
     logger::init();
     sdl::init();
     event::init();
+    file::init();
     window::init();
 
     event::register_handler(handle_exit_event);
@@ -46,6 +49,7 @@ fn init_patch() {
 
     net::init();
     misc::init();
+    gfx::init();
 }
 
 extern "C" fn init_and_get_version() -> u32 {
@@ -102,11 +106,13 @@ pub extern "stdcall" fn DllMain(_hinst_dll: usize, fdw_reason: u32, _lp_reserved
                 event::patch();
                 window::patch();
                 settings::patch();
+                file::patch();
 
                 patch::patch_nop(0x004079a8 as *mut (), 0x004079f4 + 5 - 0x004079a8); // TEMPORARY - remove video playback
                 input::patch();
 
                 gameplay::patch();
+                gfx::patch();
                 sfx::patch();
                 misc::patch();
             }

@@ -139,9 +139,12 @@ fn bps_patch_internal(input: &[u8], patch: &[u8], check_crc: bool) -> Result<Vec
                 output_offset_accumulator += signed_offset;
 
                 let start = output_offset_accumulator as usize;
-                let end = start + segment_len as usize;
-                let intermediate_buffer = output_buf[start..end].to_vec();
-                output_buf.extend_from_slice(&intermediate_buffer);
+
+                // NOTE: range is potentially overlapping, so we have to push
+                // individual bytes
+                for i in 0..segment_len as usize {
+                    output_buf.push(output_buf[start + i]);
+                }
 
                 output_offset_accumulator += segment_len as i64;
             }
@@ -188,7 +191,7 @@ fn bps_patch_internal(input: &[u8], patch: &[u8], check_crc: bool) -> Result<Vec
                 .try_into()
                 .unwrap(),
         );
-        let actual_patch_crc = crc32(patch);
+        let actual_patch_crc = crc32(&patch[0..patch.len() - 4]);
         if expected_patch_crc != actual_patch_crc {
             return Err(BPSError::PatchCRC(expected_patch_crc, actual_patch_crc));
         }
@@ -199,4 +202,8 @@ fn bps_patch_internal(input: &[u8], patch: &[u8], check_crc: bool) -> Result<Vec
 
 pub fn bps_patch_unchecked(input: &[u8], patch: &[u8]) -> Result<Vec<u8>, BPSError> {
     bps_patch_internal(input, patch, false)
+}
+
+pub fn bps_patch_checked(input: &[u8], patch: &[u8]) -> Result<Vec<u8>, BPSError> {
+    bps_patch_internal(input, patch, true)
 }
