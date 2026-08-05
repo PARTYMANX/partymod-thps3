@@ -419,8 +419,35 @@ unsafe fn patch_draw_side() {
 
         // don't skip drawing pseudo env map materials
         patch::patch_nop(0x004f4b37 as *mut (), 6);
+
+        // blend mode tests maybe fixes
+        //patch::patch_byte((0x004f463f + 1) as *mut (), 0x03);
+
+        // try changing vertex colors
+        /*
+        patch::patch_u32((0x00401319 + 2) as *mut (), 0x0058d3e8);
+        patch::patch_u32((0x0040132b + 2) as *mut (), 0x0058d3e8);
+        patch::patch_u32((0x0040133e + 2) as *mut (), 0x0058d3e8);
+
+        patch::patch_u32((0x00534ed9 + 2) as *mut (), 0x0058d3e8);
+        patch::patch_u32((0x00534eeb + 2) as *mut (), 0x0058d3e8);
+        patch::patch_u32((0x00534efe + 2) as *mut (), 0x0058d3e8);
+        */
+
+        /*
+        patch::patch_u32((0x004013b6 + 2) as *mut (), 0x0058d3ec);
+        patch::patch_u32((0x004013d0 + 2) as *mut (), 0x0058d3ec);
+        patch::patch_u32((0x004013e1 + 2) as *mut (), 0x0058d3ec);
+        patch::patch_u32((0x004013f4 + 2) as *mut (), 0x0058d3ec);
+        */
+
+        //patch::patch_u32((0x0040152a + 2) as *mut (), (&raw const F_1_OVER_512) as *const () as u32);
+        patch::patch_u32((0x004013b6 + 2) as *mut (), (&raw const F_1_OVER_512) as *const () as u32);
     }
 }
+
+static F_ZERO: f32 = 0.0;
+static F_1_OVER_512: f32 = 1.0 / 512.0;
 
 pub unsafe fn patch() {
     unsafe {
