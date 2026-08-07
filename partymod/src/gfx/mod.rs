@@ -442,7 +442,7 @@ unsafe fn patch_draw_side() {
         */
 
         //patch::patch_u32((0x0040152a + 2) as *mut (), (&raw const F_1_OVER_512) as *const () as u32);
-        patch::patch_u32((0x004013b6 + 2) as *mut (), (&raw const F_1_OVER_512) as *const () as u32);
+        //patch::patch_u32((0x004013b6 + 2) as *mut (), (&raw const F_1_OVER_512) as *const () as u32);
     }
 }
 

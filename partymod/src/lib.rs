@@ -8,6 +8,7 @@ mod gfx;
 mod input;
 mod logger;
 mod misc;
+mod movie;
 mod net;
 mod sdl;
 mod settings;
@@ -115,6 +116,7 @@ pub extern "stdcall" fn DllMain(_hinst_dll: usize, fdw_reason: u32, _lp_reserved
                 gfx::patch();
                 sfx::patch();
                 misc::patch();
+                movie::patch();
             }
         }
         windows_sys::Win32::System::SystemServices::DLL_THREAD_ATTACH => {}

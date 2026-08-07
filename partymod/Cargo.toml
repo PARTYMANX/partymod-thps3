@@ -8,6 +8,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 libc = "0.2"
+windows-core = "0.62.2"
+windows = { version = "0.62.2", features = [ "Win32", "Win32_System", "Win32_System_Threading", "Win32_System_Memory", "Win32_System_SystemServices", "Win32_System_Console", "Win32_System_WindowsProgramming", "Win32_System_Com", "Win32_Media", "Win32_Media_MediaFoundation", "Win32_Graphics", "Win32_Graphics_Imaging" ] }
 windows-sys = { version = "0.60.0", features = ["Win32", "Win32_System", "Win32_System_Memory", "Win32_System_SystemServices", "Win32_System_Console", "Win32_System_WindowsProgramming"] }
 sdl3 = { version = "0.17.3", features = ["build-from-source", "raw-window-handle"] }
 raw-window-handle = "0.6.2"

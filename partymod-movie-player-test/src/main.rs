@@ -64,17 +64,16 @@ fn main() {
 
     unsafe {
         attributes.SetUnknown(&MF_MEDIA_ENGINE_CALLBACK, &notify).unwrap();
-        //attributes.SetUINT64(&MF_MEDIA_ENGINE_PLAYBACK_HWND, hwnd as u64).unwrap();
     }
-    
 
     let media_engine = unsafe { 
         media_engine_factory.CreateInstance(
-            //MF_MEDIA_ENGINE_WAITFORSTABLE_STATE.0 as u32,
             0,
             &attributes,
         ).unwrap()
     };
+
+    // TODO: spin the next stuff off into a new function
 
     unsafe {
         let mut is_breaking = false;
@@ -129,7 +128,7 @@ fn main() {
         let mut width = 0;
         let mut height = 0;
         media_engine.GetNativeVideoSize(Some(&mut width), Some(&mut height)).unwrap();
-        //media_engine.Get
+        media_engine.GetCurrentTime();
 
         let bitmap = wic_factory.CreateBitmap(
             width,
@@ -142,20 +141,6 @@ fn main() {
             top: 0,
             right: width as i32,
             bottom: height as i32,
-        };
-
-        let src_rect = MFVideoNormalizedRect {
-            left: 0.0,
-            top: 0.0,
-            right: 1.0,
-            bottom: 1.0,
-        };
-
-        let border_color = MFARGB {
-            rgbBlue: 0,
-            rgbGreen: 0,
-            rgbRed: 0,
-            rgbAlpha: 255,
         };
 
         let wic_rect = WICRect {
@@ -188,17 +173,21 @@ fn main() {
 
                 match media_engine.OnVideoStreamTick() {
                     Ok(v) => {
+                        // documentation says this should only return Ok if there is a new frame.
+                        // in reality, this always returns Ok. good stuff, microsoft
                         media_engine.TransferVideoFrame(
                             &bitmap,
-                            Some(&src_rect),
+                            None,
                             &bitmap_rect,
-                            Some(&border_color)
+                            None,
                         ).unwrap();
 
+                        // copy to texture
                         bitmap.CopyPixels(&wic_rect, width * 4, &mut copy_buf).unwrap();
 
                         texture.update(None, &copy_buf, (width * 4) as usize).unwrap();
 
+                        // display
                         renderer.set_draw_color(sdl3::pixels::Color {
                             r: 0,
                             g: 0,
@@ -209,7 +198,9 @@ fn main() {
                         renderer.copy(&texture, None, None).unwrap();
                         renderer.present();
 
-                        //println!("OK {}", v);
+                        //let start_time = (media_engine.GetStartTime() * 10_000_000.0) as u64;
+                        //let cur_time = (media_engine.GetCurrentTime() * 10_000_000.0) as u64;
+                        //println!("FRAME {}, CURRENT TIME: {}, START_TIME: {}", v, cur_time, start_time);
                     },
                     Err(_) => {},
                 }
