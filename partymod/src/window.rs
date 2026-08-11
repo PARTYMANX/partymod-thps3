@@ -74,6 +74,15 @@ pub fn handle_event(e: &sdl3::event::Event) {
     }
 }
 
+pub fn get_window_size() -> (u32, u32) {
+    let window_context = match unsafe { &*WINDOW_CONTEXT.get() } {
+        Some(v) => v,
+        None => panic!("Tried to use uninitialized window context!"),
+    };
+
+    (window_context.res_x, window_context.res_y)
+}
+
 extern "C" fn get_or_create_window() -> isize {
     let window_context = match unsafe { &mut *WINDOW_CONTEXT.get() } {
         Some(v) => v,

@@ -1,8 +1,10 @@
-use std::sync::mpsc::Receiver;
+use std::{ptr, slice, sync::mpsc::Receiver};
 
 use partymod_common::patch;
-use windows::{Win32::{Foundation::RECT, Graphics::Imaging::{CLSID_WICImagingFactory, GUID_WICPixelFormat24bppBGR, GUID_WICPixelFormat24bppRGB, GUID_WICPixelFormat32bppBGRA, GUID_WICPixelFormat32bppPBGRA, IWICBitmap, IWICImagingFactory, WICBitmapCacheOnDemand, WICRect}, Media::MediaFoundation::{CLSID_MFMediaEngineClassFactory, IMFMediaEngine, IMFMediaEngineClassFactory, IMFMediaEngineNotify, IMFMediaEngineNotify_Impl, MF_MEDIA_ENGINE_CALLBACK, MF_MEDIA_ENGINE_DXGI_MANAGER, MF_MEDIA_ENGINE_EVENT_CANPLAY, MF_MEDIA_ENGINE_EVENT_ERROR, MF_MEDIA_ENGINE_EVENT_LOADSTART, MF_MEDIA_ENGINE_EVENT_NOTIFYSTABLESTATE, MF_MEDIA_ENGINE_PLAYBACK_HWND, MF_MEDIA_ENGINE_VIDEO_OUTPUT_FORMAT, MF_MEDIA_ENGINE_WAITFORSTABLE_STATE, MF_VERSION, MFARGB, MFCreateAttributes, MFShutdown, MFStartup, MFVideoNormalizedRect}, System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, CoInitialize, CoUninitialize}}, core::{BSTR, w}};
+use windows::{Win32::{Foundation::{HWND, RECT}, Graphics::Imaging::{CLSID_WICImagingFactory, GUID_WICPixelFormat24bppBGR, GUID_WICPixelFormat24bppRGB, GUID_WICPixelFormat32bppBGRA, GUID_WICPixelFormat32bppPBGRA, IWICBitmap, IWICImagingFactory, WICBitmapCacheOnDemand, WICRect}, Media::MediaFoundation::{CLSID_MFMediaEngineClassFactory, IMFMediaEngine, IMFMediaEngineClassFactory, IMFMediaEngineNotify, IMFMediaEngineNotify_Impl, MF_MEDIA_ENGINE_CALLBACK, MF_MEDIA_ENGINE_DXGI_MANAGER, MF_MEDIA_ENGINE_EVENT_CANPLAY, MF_MEDIA_ENGINE_EVENT_ERROR, MF_MEDIA_ENGINE_EVENT_LOADSTART, MF_MEDIA_ENGINE_EVENT_NOTIFYSTABLESTATE, MF_MEDIA_ENGINE_PLAYBACK_HWND, MF_MEDIA_ENGINE_VIDEO_OUTPUT_FORMAT, MF_MEDIA_ENGINE_WAITFORSTABLE_STATE, MF_VERSION, MFARGB, MFCreateAttributes, MFShutdown, MFStartup, MFVideoNormalizedRect}, System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, CoInitialize, CoUninitialize}}, core::{BSTR, w}};
 use windows_core::{ComObjectInner, IUnknown, implement};
+
+use crate::window;
 
 struct MoviePlayer {
     mf_com: MfCom,
@@ -15,7 +17,8 @@ struct MoviePlayer {
 
     width: u32,
     height: u32,
-    copy_buf: Vec<u8>,
+
+    texture: *const std::ffi::c_void,
 }
 
 impl MoviePlayer {
@@ -164,8 +167,31 @@ impl MoviePlayer {
             }
         };
 
-        let mut copy_buf = Vec::new();
-        copy_buf.resize((4 * width * height) as usize, 0u8);
+        let texture = unsafe {
+            let d3d8_device = *(0x00970e48 as *const *const std::ffi::c_void);
+
+            let d3d8_create_texture: *const extern "stdcall" fn(*const std::ffi::c_void, u32, u32, u32, u32, u32, u32, *mut *const std::ffi::c_void) -> u32
+                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x50));
+
+            let mut texture = ptr::null();
+
+            let result = (*d3d8_create_texture)(
+                d3d8_device,
+                width,
+                height,
+                1, // 1 level
+                0, // no usage flags
+                21, // 32 bit ARGB
+                1, // managed storage
+                &mut texture, // pointer out
+            );
+
+            if result != 0 {
+                return None;
+            }
+
+            texture
+        };
 
         Some(Self {
             mf_com,
@@ -176,7 +202,7 @@ impl MoviePlayer {
             bitmap,
             width,
             height,
-            copy_buf,
+            texture,
         })
     }
 
@@ -193,13 +219,6 @@ impl MoviePlayer {
             top: 0,
             right: self.width as i32,
             bottom: self.height as i32,
-        };
-
-        let wic_rect = WICRect {
-            X: 0,
-            Y: 0,
-            Width: self.width as i32,
-            Height: self.height as i32,
         };
 
         unsafe {
@@ -222,14 +241,8 @@ impl MoviePlayer {
                             None,
                         ).unwrap();
 
-                        // copy to texture
-                        self.bitmap.CopyPixels(
-                            &wic_rect,
-                            self.width * 4,
-                            &mut self.copy_buf,
-                        ).unwrap();
-
-                        // display
+                        self.copy_frame_to_texture();
+                        self.display_frame();
                     },
                     Err(_) => {},
                 }
@@ -241,13 +254,250 @@ impl MoviePlayer {
         }
     }
 
+    fn copy_frame_to_texture(&self) {
+        let wic_rect = WICRect {
+            X: 0,
+            Y: 0,
+            Width: self.width as i32,
+            Height: self.height as i32,
+        };
+
+        unsafe {
+            let texture_lock: *const extern "stdcall" fn(*const std::ffi::c_void, u32, *mut D3D8LockedRect, *const [i32; 4], u32) -> u32
+                = std::mem::transmute((*(self.texture as *const *const std::ffi::c_void)).byte_add(0x40));
+            let texture_unlock: *const extern "stdcall" fn(*const std::ffi::c_void, u32) -> u32
+                = std::mem::transmute((*(self.texture as *const *const std::ffi::c_void)).byte_add(0x44));
+
+            let mut locked_rect = D3D8LockedRect {
+                pitch: 0,
+                bits: std::ptr::null_mut(),
+            };
+
+            if (*texture_lock)(
+                self.texture,
+                0,  // level 0
+                &mut locked_rect,   // output pointer
+                std::ptr::null(),   // null rect to get full texture
+                0,  // no flags
+            ) != 0 {
+                println!("FAILED TO LOCK TEXTURE!");
+                return;
+            }
+
+            let bits_slice = slice::from_raw_parts_mut(
+                locked_rect.bits as *mut u8,
+                (locked_rect.pitch as u32 * self.height) as usize,
+            );
+
+            self.bitmap.CopyPixels(
+                &wic_rect,
+                locked_rect.pitch as u32,
+                bits_slice,
+            ).unwrap();
+
+            // TODO: fix format
+            for row in 0..self.height {
+                let row_offset = (locked_rect.pitch as u32 * row) as usize;
+
+                let row_pixels = slice::from_raw_parts_mut(
+                    locked_rect.bits.byte_add(row_offset) as *mut u32,
+                    self.width as usize,
+                );
+
+                for pixel in row_pixels {
+                    //*pixel = 0xff00ffff;
+                }
+            }
+
+            if (*texture_unlock)(
+                self.texture,
+                0,  // level 0
+            ) != 0 {
+                println!("FAILED TO UNLOCK TEXTURE!");
+                return;
+            }
+        }
+    }
+
+    fn display_frame(&self) {
+        unsafe {
+            let d3d8_device = *(0x00970e48 as *const *const std::ffi::c_void);
+
+            let d3d8_clear: *const extern "stdcall" fn(*const std::ffi::c_void, u32, *const [i32; 4], u32, u32, f32, u32) -> u32
+                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x90));
+            let d3d8_begin_scene: *const extern "stdcall" fn(*const std::ffi::c_void) -> u32
+                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x88));
+            let d3d8_end_scene: *const extern "stdcall" fn(*const std::ffi::c_void) -> u32
+                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x8c));
+            let d3d8_set_vertex_shader: *const extern "stdcall" fn(*const std::ffi::c_void, u32) -> u32
+                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x130));
+            let d3d8_set_texture_stage_state: *const extern "stdcall" fn(*const std::ffi::c_void, u32, u32, u32) -> u32
+                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0xfc));
+            let d3d8_set_texture: *const extern "stdcall" fn(*const std::ffi::c_void, u32, *const std::ffi::c_void) -> u32
+                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0xf4));
+            let d3d8_draw_primitive_up: *const extern "stdcall" fn(*const std::ffi::c_void, u32, u32, *const MovieVertex, u32) -> u32
+                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x120));
+            let d3d8_present: *const extern "stdcall" fn(*const std::ffi::c_void, *const [i32; 4], *const [i32; 4], *const HWND, *const std::ffi::c_void) -> u32
+                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x3c));
+
+            (*d3d8_clear)(
+                d3d8_device,
+                0, // no rectangles
+                std::ptr::null(), // no rectangles
+                1, // D3DCLEAR_TARGET
+                0xff000000, // black clear color
+                0.0, // z 0 (unused)
+                0, // stencil 0 (unused)
+            );
+            
+            if (*d3d8_begin_scene)(d3d8_device) != 0 {
+                println!("Failed to begin scene!");
+                return;
+            }
+
+            if (*d3d8_set_vertex_shader)(d3d8_device, 0x144) != 0 {
+                println!("Failed to set shader!");
+                return;
+            }
+
+            if (*d3d8_set_texture_stage_state)(
+                d3d8_device,
+                0,  // stage 0
+                1,  // color op
+                4,  // modulate
+            ) != 0 {
+                println!("Failed to set texture color op!");
+                return;
+            }
+
+            if (*d3d8_set_texture_stage_state)(
+                d3d8_device,
+                0,  // stage 0
+                13,  // address u
+                3,  // clamp
+            ) != 0 {
+                println!("Failed to set texture u address mode!");
+                return;
+            }
+
+            if (*d3d8_set_texture_stage_state)(
+                d3d8_device,
+                0,  // stage 0
+                14,  // address v
+                3,  // clamp
+            ) != 0 {
+                println!("Failed to set texture v address mode!");
+                return;
+            }
+
+            if (*d3d8_set_texture)(d3d8_device, 0, self.texture) != 0 {
+                println!("Failed to set texture!");
+                return;
+            }
+
+            let (x, y) = window::get_window_size();
+
+            // TODO: calculate correct video positioning/sizing
+
+            let vertices = [
+                MovieVertex {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                    w: 1.0,
+                    color: 0xffffffff,
+                    u: 0.0,
+                    v: 0.0,
+                },
+                MovieVertex {
+                    x: x as f32,
+                    y: 0.0,
+                    z: 0.0,
+                    w: 1.0,
+                    color: 0xffffffff,
+                    u: 1.0,
+                    v: 0.0,
+                },
+                MovieVertex {
+                    x: 0.0,
+                    y: y as f32,
+                    z: 0.0,
+                    w: 1.0,
+                    color: 0xffffffff,
+                    u: 0.0,
+                    v: 1.0,
+                },
+                MovieVertex {
+                    x: x as f32,
+                    y: y as f32,
+                    z: 0.0,
+                    w: 1.0,
+                    color: 0xffffffff,
+                    u: 1.0,
+                    v: 1.0,
+                },
+            ];
+
+            if (*d3d8_draw_primitive_up)(
+                d3d8_device,
+                5, // triangle strip
+                2, // two triangles
+                vertices.as_ptr(),
+                size_of::<MovieVertex>() as u32,
+            ) != 0 {
+                println!("Failed to draw!");
+                return;
+            }
+
+            if (*d3d8_end_scene)(d3d8_device) != 0 {
+                println!("Failed to end scene!");
+                return;
+            }
+
+            if (*d3d8_present)(
+                d3d8_device,
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+            ) != 0 {
+                println!("Failed to present!");
+                return;
+            }
+        };
+    }
+
     fn check_break_event() -> bool {
         false
     }
 }
 
+#[repr(C)]
+struct D3D8LockedRect {
+    pitch: i32,
+    bits: *mut std::ffi::c_void,
+}
+
+#[repr(C)]
+struct MovieVertex {
+    x: f32,
+    y: f32,
+    z: f32,
+    w: f32,
+    color: u32,
+    u: f32,
+    v: f32,
+}
+
 impl Drop for MoviePlayer {
     fn drop(&mut self) {
+        unsafe {
+            let texture_release: *const extern "stdcall" fn(*const std::ffi::c_void) -> u32
+                = std::mem::transmute((*(self.texture as *const *const std::ffi::c_void)).byte_add(0x08));
+
+            let _ = (*texture_release)(self.texture);
+        };
+
         let _ = unsafe {
             self.media_engine.Shutdown()
         };
