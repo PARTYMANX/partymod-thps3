@@ -4,7 +4,7 @@ use partymod_common::patch;
 use windows::{Win32::{Foundation::{HWND, RECT}, Graphics::Imaging::{CLSID_WICImagingFactory, GUID_WICPixelFormat24bppBGR, GUID_WICPixelFormat24bppRGB, GUID_WICPixelFormat32bppBGRA, GUID_WICPixelFormat32bppPBGRA, IWICBitmap, IWICImagingFactory, WICBitmapCacheOnDemand, WICRect}, Media::MediaFoundation::{CLSID_MFMediaEngineClassFactory, IMFMediaEngine, IMFMediaEngineClassFactory, IMFMediaEngineNotify, IMFMediaEngineNotify_Impl, MF_MEDIA_ENGINE_CALLBACK, MF_MEDIA_ENGINE_DXGI_MANAGER, MF_MEDIA_ENGINE_EVENT_CANPLAY, MF_MEDIA_ENGINE_EVENT_ERROR, MF_MEDIA_ENGINE_EVENT_LOADSTART, MF_MEDIA_ENGINE_EVENT_NOTIFYSTABLESTATE, MF_MEDIA_ENGINE_PLAYBACK_HWND, MF_MEDIA_ENGINE_VIDEO_OUTPUT_FORMAT, MF_MEDIA_ENGINE_WAITFORSTABLE_STATE, MF_VERSION, MFARGB, MFCreateAttributes, MFShutdown, MFStartup, MFVideoNormalizedRect}, System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, CoInitialize, CoUninitialize}}, core::{BSTR, w}};
 use windows_core::{ComObjectInner, IUnknown, implement};
 
-use crate::window;
+use crate::{event, input, throttle, window};
 
 struct MoviePlayer {
     mf_com: MfCom,
@@ -107,6 +107,13 @@ impl MoviePlayer {
                         break;
                     },
                     NotifyMessage::PlaybackReady => todo!(),
+                    NotifyMessage::Error => {
+                        println!("Error!");
+
+                        let _ = unsafe { media_engine.Shutdown() };
+
+                        return None;
+                    }
                 },
                 Err(_) => {
                     if Self::check_break_event() {
@@ -129,6 +136,13 @@ impl MoviePlayer {
                         println!("LOADED!");
                         break;
                     },
+                    NotifyMessage::Error => {
+                        println!("Error!");
+
+                        let _ = unsafe { media_engine.Shutdown() };
+
+                        return None;
+                    }
                 },
                 Err(_) => {
                     if Self::check_break_event() {
@@ -149,6 +163,8 @@ impl MoviePlayer {
 
                 return None;
             }
+
+            let _ = media_engine.SetVolume(0.02);
         }
 
         let bitmap = unsafe {
@@ -228,10 +244,13 @@ impl MoviePlayer {
 
             let mut is_breaking = false;
             while !is_breaking && !self.media_engine.IsEnded().as_bool() {
-                // throttle here
+                // throttle to 60hz. this is a little weird but there's no easy
+                // way to figure out what the target framerate should be.
+                // oh well!
+                throttle::throttle_frame();
 
                 match self.media_engine.OnVideoStreamTick() {
-                    Ok(v) => {
+                    Ok(_) => {
                         // documentation says this should only return Ok if there is a new frame.
                         // in reality, this always returns Ok. good stuff, microsoft
                         self.media_engine.TransferVideoFrame(
@@ -243,6 +262,21 @@ impl MoviePlayer {
 
                         self.copy_frame_to_texture();
                         self.display_frame();
+                    },
+                    Err(_) => {},
+                }
+
+                // check that the player hasn't run into an error
+                match self.recv.try_recv() {
+                    Ok(v) => match v {
+                        NotifyMessage::Error => {
+                            println!("Error!");
+                            return;
+                        }
+                        _ => {
+                            println!("got other message???");
+                            return;
+                        }
                     },
                     Err(_) => {},
                 }
@@ -333,6 +367,8 @@ impl MoviePlayer {
                 = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x130));
             let d3d8_set_texture_stage_state: *const extern "stdcall" fn(*const std::ffi::c_void, u32, u32, u32) -> u32
                 = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0xfc));
+            let d3d8_set_render_state: *const extern "stdcall" fn(*const std::ffi::c_void, u32, u32) -> u32
+                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0xc8));
             let d3d8_set_texture: *const extern "stdcall" fn(*const std::ffi::c_void, u32, *const std::ffi::c_void) -> u32
                 = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0xf4));
             let d3d8_draw_primitive_up: *const extern "stdcall" fn(*const std::ffi::c_void, u32, u32, *const MovieVertex, u32) -> u32
@@ -357,6 +393,15 @@ impl MoviePlayer {
 
             if (*d3d8_set_vertex_shader)(d3d8_device, 0x144) != 0 {
                 println!("Failed to set shader!");
+                return;
+            }
+
+            if (*d3d8_set_render_state)(
+                d3d8_device,
+                22,  // cull mode
+                1,  // cull none
+            ) != 0 {
+                println!("Failed to set texture color op!");
                 return;
             }
 
@@ -387,6 +432,16 @@ impl MoviePlayer {
                 3,  // clamp
             ) != 0 {
                 println!("Failed to set texture v address mode!");
+                return;
+            }
+
+            if (*d3d8_set_texture_stage_state)(
+                d3d8_device,
+                0,  // stage 0
+                16,  // mag filter
+                2,  // linear
+            ) != 0 {
+                println!("Failed to set texture magnify filter!");
                 return;
             }
 
@@ -468,6 +523,14 @@ impl MoviePlayer {
     }
 
     fn check_break_event() -> bool {
+        event::process_events();
+
+        // TODO: handle exit (get Mlp::manager and check first member. if 1, exit)
+        if is_exiting() {
+            return true;
+        }
+        // TODO: handle input
+
         false
     }
 }
@@ -537,6 +600,7 @@ impl Drop for MfCom {
 enum NotifyMessage {
     LoadReady,
     PlaybackReady,
+    Error,
 }
 
 #[implement(IMFMediaEngineNotify)]
@@ -554,9 +618,10 @@ impl IMFMediaEngineNotify_Impl for MediaEngineNotify_Impl {
             println!("CAN PLAY");
             self.sender.send(NotifyMessage::PlaybackReady).unwrap();
         } else if event == MF_MEDIA_ENGINE_EVENT_ERROR.0 as u32 {
-            // TODO: handle error (likely file not found)
+            println!("ERROR");
+            self.sender.send(NotifyMessage::Error).unwrap();
         } else {
-            println!("GOT EVENT: {}", event);
+            //println!("GOT EVENT: {}", event);
         }
         
         Ok(())
@@ -576,9 +641,39 @@ fn play_movie(path: &str) {
 
     println!("Playing {}", &fullpath);
     if let Some(mut player) = MoviePlayer::new(&fullpath) {
-        println!("ACTUALLY PLAYING");
+        // stop all streams
+        unsafe {
+            let close_streams_1: extern "C" fn()
+                = std::mem::transmute(0x004c5c90);
+            let close_streams_2: extern "C" fn(i32)
+                = std::mem::transmute(0x004c5cb0);
+
+            close_streams_1();
+            close_streams_2(-1);
+        }
 
         player.play();
+    }
+}
+
+fn is_exiting() -> bool {
+    unsafe {
+        let get_mainloop_manager: extern "C" fn(bool) -> *const std::ffi::c_char
+            = std::mem::transmute(0x004c02b0);
+        let release_mainloop_manager: extern "thiscall" fn(*const std::ffi::c_char)
+            = std::mem::transmute(0x004c0300);
+        
+        let mainloop_manager = get_mainloop_manager(false);
+
+        let result = if !mainloop_manager.is_null() {
+            (*mainloop_manager) != 0
+        } else {
+            false
+        };
+
+        release_mainloop_manager(mainloop_manager);
+
+        result
     }
 }
 
@@ -590,7 +685,13 @@ unsafe extern "C" fn intro_play_movie(path: *const std::ffi::c_char, unk: u32) -
     let native_path = cstr.to_string_lossy();
 
     play_movie(&native_path);
-    return 1;
+    
+    if is_exiting() {
+        // there is very slow deinit code after this, so just skip that and exit
+        std::process::exit(0);
+    } else {
+        1
+    }
 }
 
 unsafe extern "C" fn script_play_movie(path: *const std::ffi::c_char) {

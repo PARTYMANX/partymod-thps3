@@ -9,4 +9,5 @@ pub mod logger;
 pub mod patch;
 pub mod prng;
 pub mod syncunsafecell;
+pub mod throttle;
 pub mod window;

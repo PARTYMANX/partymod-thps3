@@ -10,5 +10,4 @@ members = [
     "partymod",
     "partypatcher",
     "partyconfig",
-    "partymod-movie-player-test",
 ]

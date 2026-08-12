@@ -11,7 +11,7 @@ pub fn init() {
     }
 }
 
-fn process_events() {
+pub fn process_events() {
     let manager = unsafe {
         let ctx = &*EVENT_MANAGER_CONTEXT.get();
         match ctx {

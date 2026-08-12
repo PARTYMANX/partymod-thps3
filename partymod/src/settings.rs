@@ -22,7 +22,7 @@ extern "C" fn init_settings() {
         let ptr_bit_depth = 0x0085108c as *mut u32;
 
         *ptr_high_bandwidth = true;
-        *ptr_play_intro = false;
+        *ptr_play_intro = true;
 
         // TODO: move rest of these to gfx::d3d8 module
         *ptr_animating_textures = true;

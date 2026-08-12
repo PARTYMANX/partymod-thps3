@@ -13,6 +13,7 @@ mod net;
 mod sdl;
 mod settings;
 mod sfx;
+mod throttle;
 mod window;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -36,6 +37,7 @@ fn init_patch() {
     sdl::init();
     event::init();
     file::init();
+    throttle::init();
     window::init();
 
     event::register_handler(handle_exit_event);
@@ -109,7 +111,6 @@ pub extern "stdcall" fn DllMain(_hinst_dll: usize, fdw_reason: u32, _lp_reserved
                 settings::patch();
                 file::patch();
 
-                patch::patch_nop(0x004079a8 as *mut (), 0x004079f4 + 5 - 0x004079a8); // TEMPORARY - remove video playback
                 input::patch();
 
                 gameplay::patch();
