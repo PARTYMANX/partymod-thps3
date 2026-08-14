@@ -22,7 +22,6 @@ pub struct GamepadManager {
 }
 
 impl GamepadManager {
-    // TODO: logging
     pub fn new(max_players: usize, logger: Option<Arc<dyn Logger>>) -> Self {
         let mut player_slots = Vec::with_capacity(max_players);
         player_slots.resize(max_players, None);

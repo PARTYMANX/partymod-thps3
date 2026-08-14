@@ -25,6 +25,8 @@ pub struct InputContext {
     is_using_keyboard: bool,
     is_cursor_visible: bool,
     network_menu_exit_debounce: bool, // for exiting network menus on gamepad
+
+    is_playing_movie: bool,
 }
 
 unsafe impl Sync for InputContext {}
@@ -51,6 +53,8 @@ fn init_context() {
             is_using_keyboard: true,
             is_cursor_visible: true,
             network_menu_exit_debounce: false,
+
+            is_playing_movie: false,
         })
     }
 }
@@ -148,6 +152,12 @@ fn event_handler(event: &sdl3::event::Event) {
             None => panic!("Tried to get uninitialized input context!"),
         }
     };
+
+    if inp_ctx.is_playing_movie {
+        movie_event(sdl_ctx, inp_ctx, event);
+
+        return;
+    }
 
     match event {
         sdl3::event::Event::MouseMotion { x, y, .. } => unsafe {
@@ -295,7 +305,7 @@ extern "cdecl" fn is_window_active() -> bool {
     true
 }
 
-extern "C" fn set_cursor_active() {
+pub extern "C" fn set_cursor_active() {
     let inp_ctx = unsafe {
         match &mut *INPUT_CONTEXT.get() {
             Some(v) => v,
@@ -315,7 +325,7 @@ extern "C" fn set_cursor_active() {
     show_hide_cursor(inp_ctx, sdl_ctx);
 }
 
-extern "C" fn set_cursor_inactive() {
+pub extern "C" fn set_cursor_inactive() {
     let inp_ctx = unsafe {
         match &mut *INPUT_CONTEXT.get() {
             Some(v) => v,
@@ -330,7 +340,7 @@ extern "C" fn set_cursor_inactive() {
         }
     };
 
-    inp_ctx.is_cursor_visible = true;
+    inp_ctx.is_cursor_visible = false;
 
     show_hide_cursor(inp_ctx, sdl_ctx);
 }
@@ -358,6 +368,62 @@ fn is_menu_open() -> bool {
 
         menu_is_open()
     }
+}
+
+pub fn set_playing_movie(is_playing_movie: bool) {
+    unsafe {
+        match &mut *INPUT_CONTEXT.get() {
+            Some(v) => v.is_playing_movie = is_playing_movie,
+            None => panic!("Tried to get uninitialized input context!"),
+        }
+    };
+}
+
+fn movie_event(sdl_ctx: &SDLContext, inp_ctx: &mut InputContext, event: &sdl3::event::Event) {
+    match event {
+        sdl3::event::Event::KeyDown { .. } => {
+            set_using_keyboard(inp_ctx, sdl_ctx, true);
+
+            
+        }
+        sdl3::event::Event::ControllerButtonDown { .. } => {
+            set_using_keyboard(inp_ctx, sdl_ctx, false);
+        }
+        _ => {}
+    }
+
+    inp_ctx.keyboard.handle_keyboard_event(event);
+
+    inp_ctx
+        .gamepad_manager
+        .event_handler(event, &sdl_ctx.gamepad_subsystem);
+}
+
+pub fn poll_movie_break_buttons() -> bool {
+    let sdl_ctx = unsafe {
+        match &*SDL_CONTEXT.get() {
+            Some(v) => v,
+            None => panic!("Tried to get uninitialized SDL context!"),
+        }
+    };
+
+    let inp_ctx = unsafe {
+        match &mut *INPUT_CONTEXT.get() {
+            Some(v) => v,
+            None => panic!("Tried to get uninitialized input context!"),
+        }
+    };
+
+    let keyboard_state = sdl_ctx.event_pump.keyboard_state();
+
+    inp_ctx.gamepad_manager.poll_button_binding(0, "Ollie").0 |
+        inp_ctx.gamepad_manager.poll_button_binding(0, "Pause").0 |
+        inp_ctx.keybind_manager.poll_key_binding("Ollie", &keyboard_state) |
+        inp_ctx.keybind_manager.poll_key_binding("Pause", &keyboard_state) |
+        inp_ctx.keybind_manager.poll_menu_binding("Accept", &keyboard_state) |
+        inp_ctx.keybind_manager.poll_menu_binding("Accept2", &keyboard_state) |
+        inp_ctx.keybind_manager.poll_menu_binding("Back", &keyboard_state) |
+        keyboard_state.is_scancode_pressed(Scancode::Space)
 }
 
 pub unsafe extern "C" fn viewer_shift_logic_code_wrapper(viewer: *mut ()) {

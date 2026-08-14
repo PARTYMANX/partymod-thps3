@@ -4,12 +4,12 @@ use partymod_common::patch;
 use windows::{Win32::{Foundation::{HWND, RECT}, Graphics::Imaging::{CLSID_WICImagingFactory, GUID_WICPixelFormat24bppBGR, GUID_WICPixelFormat24bppRGB, GUID_WICPixelFormat32bppBGRA, GUID_WICPixelFormat32bppPBGRA, IWICBitmap, IWICImagingFactory, WICBitmapCacheOnDemand, WICRect}, Media::MediaFoundation::{CLSID_MFMediaEngineClassFactory, IMFMediaEngine, IMFMediaEngineClassFactory, IMFMediaEngineNotify, IMFMediaEngineNotify_Impl, MF_MEDIA_ENGINE_CALLBACK, MF_MEDIA_ENGINE_DXGI_MANAGER, MF_MEDIA_ENGINE_EVENT_CANPLAY, MF_MEDIA_ENGINE_EVENT_ERROR, MF_MEDIA_ENGINE_EVENT_LOADSTART, MF_MEDIA_ENGINE_EVENT_NOTIFYSTABLESTATE, MF_MEDIA_ENGINE_PLAYBACK_HWND, MF_MEDIA_ENGINE_VIDEO_OUTPUT_FORMAT, MF_MEDIA_ENGINE_WAITFORSTABLE_STATE, MF_VERSION, MFARGB, MFCreateAttributes, MFShutdown, MFStartup, MFVideoNormalizedRect}, System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, CoInitialize, CoUninitialize}}, core::{BSTR, w}};
 use windows_core::{ComObjectInner, IUnknown, implement};
 
-use crate::{event, input, throttle, window};
+use crate::{event, input, sfx, throttle, window};
 
 struct MoviePlayer {
-    mf_com: MfCom,
-    wic_factory: IWICImagingFactory,
-    media_engine_factory: IMFMediaEngineClassFactory,
+    _mf_com: MfCom,
+    _wic_factory: IWICImagingFactory,
+    _media_engine_factory: IMFMediaEngineClassFactory,
 
     recv: Receiver<NotifyMessage>,
     media_engine: IMFMediaEngine,
@@ -19,6 +19,8 @@ struct MoviePlayer {
     height: u32,
 
     texture: *const std::ffi::c_void,
+
+    break_button_debounce: bool,
 }
 
 impl MoviePlayer {
@@ -99,6 +101,8 @@ impl MoviePlayer {
             }
         }
 
+        let mut break_button_debounce = input::poll_movie_break_buttons();
+
         loop {
             match recv.recv_timeout(std::time::Duration::from_secs_f64(1.0/60.0)) {
                 Ok(v) => match v {
@@ -116,7 +120,7 @@ impl MoviePlayer {
                     }
                 },
                 Err(_) => {
-                    if Self::check_break_event() {
+                    if Self::check_break_event(&mut break_button_debounce) {
                         let _ = unsafe { media_engine.Shutdown() };
 
                         return None;
@@ -145,7 +149,7 @@ impl MoviePlayer {
                     }
                 },
                 Err(_) => {
-                    if Self::check_break_event() {
+                    if Self::check_break_event(&mut break_button_debounce) {
                         let _ = unsafe { media_engine.Shutdown() };
 
                         return None;
@@ -163,8 +167,11 @@ impl MoviePlayer {
 
                 return None;
             }
+        }
 
-            let _ = media_engine.SetVolume(0.02);
+        let volume = sfx::get_sound_volume() * sfx::get_master_volume();
+        unsafe {
+            let _ = media_engine.SetVolume(volume);
         }
 
         let bitmap = unsafe {
@@ -210,15 +217,16 @@ impl MoviePlayer {
         };
 
         Some(Self {
-            mf_com,
-            wic_factory,
-            media_engine_factory,
+            _mf_com: mf_com,
+            _wic_factory: wic_factory,
+            _media_engine_factory: media_engine_factory,
             recv,
             media_engine,
             bitmap,
             width,
             height,
             texture,
+            break_button_debounce,
         })
     }
 
@@ -281,7 +289,7 @@ impl MoviePlayer {
                     Err(_) => {},
                 }
 
-                if Self::check_break_event() {
+                if Self::check_break_event(&mut self.break_button_debounce) {
                     is_breaking = true;
                 }
             }
@@ -329,8 +337,8 @@ impl MoviePlayer {
                 bits_slice,
             ).unwrap();
 
-            // TODO: fix format
-            for row in 0..self.height {
+            // old code to fix the format before I realized that it was already right
+            /*for row in 0..self.height {
                 let row_offset = (locked_rect.pitch as u32 * row) as usize;
 
                 let row_pixels = slice::from_raw_parts_mut(
@@ -339,9 +347,9 @@ impl MoviePlayer {
                 );
 
                 for pixel in row_pixels {
-                    //*pixel = 0xff00ffff;
+                    // *pixel = 0xff00ffff;
                 }
-            }
+            }*/
 
             if (*texture_unlock)(
                 self.texture,
@@ -450,14 +458,35 @@ impl MoviePlayer {
                 return;
             }
 
-            let (x, y) = window::get_window_size();
+            // calculate offset and sizing for correct aspect ratio rendering
+            let (window_width, window_height) = window::get_window_size();
+            let target_aspect_ratio = self.width as f32 / self.height as f32;
+            let window_aspect_ratio = window_width as f32 / window_height as f32;
 
-            // TODO: calculate correct video positioning/sizing
+            let (width, height, x, y) = if window_aspect_ratio > target_aspect_ratio {
+                let height = window_height as f32;
+                let y = 0.0;
+
+                let ratio_correction = target_aspect_ratio / window_aspect_ratio;
+                let width = ratio_correction * window_width as f32;
+                let x = (window_width as f32 - width) / 2.0;
+
+                (width, height, x, y)
+            } else {
+                let width = window_width as f32;
+                let x = 0.0;
+
+                let ratio_correction = window_aspect_ratio / target_aspect_ratio;
+                let height = ratio_correction * window_height as f32;
+                let y = (window_height as f32 - height) / 2.0;
+
+                (width, height, x, y)
+            };
 
             let vertices = [
                 MovieVertex {
-                    x: 0.0,
-                    y: 0.0,
+                    x: x,
+                    y: y,
                     z: 0.0,
                     w: 1.0,
                     color: 0xffffffff,
@@ -465,8 +494,8 @@ impl MoviePlayer {
                     v: 0.0,
                 },
                 MovieVertex {
-                    x: x as f32,
-                    y: 0.0,
+                    x: x + width,
+                    y: y,
                     z: 0.0,
                     w: 1.0,
                     color: 0xffffffff,
@@ -474,8 +503,8 @@ impl MoviePlayer {
                     v: 0.0,
                 },
                 MovieVertex {
-                    x: 0.0,
-                    y: y as f32,
+                    x: x,
+                    y: y + height,
                     z: 0.0,
                     w: 1.0,
                     color: 0xffffffff,
@@ -483,8 +512,8 @@ impl MoviePlayer {
                     v: 1.0,
                 },
                 MovieVertex {
-                    x: x as f32,
-                    y: y as f32,
+                    x: x + width,
+                    y: y + height,
                     z: 0.0,
                     w: 1.0,
                     color: 0xffffffff,
@@ -522,16 +551,22 @@ impl MoviePlayer {
         };
     }
 
-    fn check_break_event() -> bool {
+    fn check_break_event(break_button_debounce: &mut bool) -> bool {
         event::process_events();
 
-        // TODO: handle exit (get Mlp::manager and check first member. if 1, exit)
         if is_exiting() {
             return true;
         }
-        // TODO: handle input
 
-        false
+        if !*break_button_debounce {
+            input::poll_movie_break_buttons()
+        } else {
+            if !input::poll_movie_break_buttons() {
+                *break_button_debounce = false;
+            }
+
+            false
+        }
     }
 }
 
@@ -610,7 +645,7 @@ struct MediaEngineNotify {
 }
 
 impl IMFMediaEngineNotify_Impl for MediaEngineNotify_Impl {
-    fn EventNotify(&self, event: u32, param1: usize, param2: u32) -> windows::core::Result<()> {
+    fn EventNotify(&self, event: u32, _param1: usize, _param2: u32) -> windows::core::Result<()> {
         if event == MF_MEDIA_ENGINE_EVENT_LOADSTART.0 as u32 {
             println!("LOAD START");
             self.sender.send(NotifyMessage::LoadReady).unwrap();
@@ -652,7 +687,13 @@ fn play_movie(path: &str) {
             close_streams_2(-1);
         }
 
+        input::set_cursor_inactive();
+        input::set_playing_movie(true);
+
         player.play();
+
+        input::set_playing_movie(false);
+        input::set_cursor_active();
     }
 }
 
@@ -677,7 +718,7 @@ fn is_exiting() -> bool {
     }
 }
 
-unsafe extern "C" fn intro_play_movie(path: *const std::ffi::c_char, unk: u32) -> u32 {
+unsafe extern "C" fn intro_play_movie(path: *const std::ffi::c_char, _unk: u32) -> u32 {
     let cstr = unsafe {
         std::ffi::CStr::from_ptr(path)
     };
@@ -709,4 +750,3 @@ pub unsafe fn patch() {
         patch::patch_jmp(0x004c7420 as *mut (), script_play_movie as *const ());
     }
 }
-
