@@ -1,6 +1,13 @@
-use std::{collections::HashMap, fs::OpenOptions, io::{Read, Seek, SeekFrom, Write}, path::Path};
+use std::{
+    collections::HashMap,
+    fs::OpenOptions,
+    io::{Read, Seek, SeekFrom, Write},
+    path::Path,
+};
 
-use partymod_common::{bps::bps_patch_checked, logger::LogLevel, patch, syncunsafecell::SyncUnsafeCell};
+use partymod_common::{
+    bps::bps_patch_checked, logger::LogLevel, patch, syncunsafecell::SyncUnsafeCell,
+};
 
 use crate::logger;
 
@@ -25,7 +32,9 @@ pub fn register_patch(path: &str, patch: &[u8]) {
         None => panic!("Tried to use uninitialized file context!"),
     };
 
-    file_context.patches.insert(path.to_string().to_lowercase(), patch.to_vec());
+    file_context
+        .patches
+        .insert(path.to_string().to_lowercase(), patch.to_vec());
 }
 
 struct PatchedFile {
@@ -56,8 +65,8 @@ impl PatchableFile {
             Some(v) => v,
             None => {
                 logger::log(LogLevel::Error, &format!("Failed to get path???"));
-                return Some(Box::new(PatchableFile::Unpatched(f)))
-            },
+                return Some(Box::new(PatchableFile::Unpatched(f)));
+            }
         };
 
         match file_context.patches.get(&path_str.to_lowercase()) {
@@ -74,26 +83,27 @@ impl PatchableFile {
                 match bps_patch_checked(&buf, patch_buf) {
                     Ok(v) => {
                         logger::log(LogLevel::Info, &format!("Patch successful!"));
-                        Some(Box::new(PatchableFile::Patched(PatchedFile { cursor: 0, buffer: v })))
-                    },
+                        Some(Box::new(PatchableFile::Patched(PatchedFile {
+                            cursor: 0,
+                            buffer: v,
+                        })))
+                    }
                     Err(e) => {
                         logger::log(LogLevel::Error, &format!("Failed to patch file: {}", e));
                         let _ = f.seek(SeekFrom::Start(0));
                         Some(Box::new(PatchableFile::Unpatched(f)))
-                    },
+                    }
                 }
-            },
+            }
             None => Some(Box::new(PatchableFile::Unpatched(f))),
         }
     }
 
     fn read(&mut self, buf: &mut [u8]) -> usize {
         match self {
-            PatchableFile::Unpatched(f) => {
-                match f.read(buf) {
-                    Ok(v) => v,
-                    Err(_) => 0,
-                }
+            PatchableFile::Unpatched(f) => match f.read(buf) {
+                Ok(v) => v,
+                Err(_) => 0,
             },
             PatchableFile::Patched(f) => {
                 let start = f.cursor;
@@ -105,21 +115,19 @@ impl PatchableFile {
 
                 f.cursor += slice.len();
                 slice.len()
-            },
+            }
         }
     }
 
     fn write(&mut self, buf: &mut [u8]) -> usize {
         match self {
-            PatchableFile::Unpatched(f) => {
-                match f.write(buf) {
-                    Ok(v) => v,
-                    Err(_) => 0,
-                }
+            PatchableFile::Unpatched(f) => match f.write(buf) {
+                Ok(v) => v,
+                Err(_) => 0,
             },
             PatchableFile::Patched(_) => {
                 panic!("Tried to write to patched file!");
-            },
+            }
         }
     }
 
@@ -142,13 +150,13 @@ impl PatchableFile {
                             } else {
                                 return;
                             }
-                        },
+                        }
                         Err(e) => {
                             logger::log(LogLevel::Error, &format!("Failed to read file: {}", e));
                         }
                     }
                 }
-            },
+            }
             PatchableFile::Patched(f) => {
                 let start = f.cursor;
                 let end = usize::min(f.cursor + buf.len(), f.buffer.len());
@@ -165,23 +173,21 @@ impl PatchableFile {
                         return;
                     }
                 }
-            },
+            }
         }
     }
 
     fn puts(&mut self, str: &std::ffi::CStr) {
         match self {
-            PatchableFile::Unpatched(f) => {
-                match f.write(str.to_bytes()) {
-                    Ok(_) => {},
-                    Err(e) => {
-                        logger::log(LogLevel::Error, &format!("Failed to write to file: {}", e));
-                    },
+            PatchableFile::Unpatched(f) => match f.write(str.to_bytes()) {
+                Ok(_) => {}
+                Err(e) => {
+                    logger::log(LogLevel::Error, &format!("Failed to write to file: {}", e));
                 }
             },
             PatchableFile::Patched(_) => {
                 panic!("Tried to write to patched file!");
-            },
+            }
         }
     }
 
@@ -191,7 +197,10 @@ impl PatchableFile {
                 let pos = match f.seek(SeekFrom::Current(0)) {
                     Ok(v) => v,
                     Err(e) => {
-                        logger::log(LogLevel::Error, &format!("Failed to get file position: {}", e));
+                        logger::log(
+                            LogLevel::Error,
+                            &format!("Failed to get file position: {}", e),
+                        );
                         return true;
                     }
                 };
@@ -209,38 +218,32 @@ impl PatchableFile {
                     logger::log(LogLevel::Error, &format!("Failed to seek file: {}", e));
                 }
                 n == 0
-            },
-            PatchableFile::Patched(f) => {
-                f.cursor >= f.buffer.len()
-            },
+            }
+            PatchableFile::Patched(f) => f.cursor >= f.buffer.len(),
         }
     }
 
     fn seek(&mut self, pos: SeekFrom) -> bool {
         match self {
-            PatchableFile::Unpatched(f) => {
-                match f.seek(pos) {
-                    Ok(_) => false,
-                    Err(e) => {
-                        logger::log(LogLevel::Error, &format!("Failed to seek file: {}", e));
-                        return true;
-                    }
+            PatchableFile::Unpatched(f) => match f.seek(pos) {
+                Ok(_) => false,
+                Err(e) => {
+                    logger::log(LogLevel::Error, &format!("Failed to seek file: {}", e));
+                    return true;
                 }
             },
-            PatchableFile::Patched(f) => {
-                match pos {
-                    SeekFrom::Start(v) => {
-                        f.cursor = v as usize;
-                        false
-                    },
-                    SeekFrom::End(v) => {
-                        f.cursor = (f.buffer.len() as i64 - v) as usize;
-                        false
-                    },
-                    SeekFrom::Current(v) => {
-                        f.cursor = (f.cursor as i64 + v) as usize;
-                        false
-                    },
+            PatchableFile::Patched(f) => match pos {
+                SeekFrom::Start(v) => {
+                    f.cursor = v as usize;
+                    false
+                }
+                SeekFrom::End(v) => {
+                    f.cursor = (f.buffer.len() as i64 - v) as usize;
+                    false
+                }
+                SeekFrom::Current(v) => {
+                    f.cursor = (f.cursor as i64 + v) as usize;
+                    false
                 }
             },
         }
@@ -256,18 +259,17 @@ impl PatchableFile {
 
     fn tell(&mut self) -> u64 {
         match self {
-            PatchableFile::Unpatched(f) => {
-                match f.seek(SeekFrom::Current(0)) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        logger::log(LogLevel::Error, &format!("Failed to get file position: {}", e));
-                        return 0;
-                    }
+            PatchableFile::Unpatched(f) => match f.seek(SeekFrom::Current(0)) {
+                Ok(v) => v,
+                Err(e) => {
+                    logger::log(
+                        LogLevel::Error,
+                        &format!("Failed to get file position: {}", e),
+                    );
+                    return 0;
                 }
             },
-            PatchableFile::Patched(f) => {
-                f.cursor as u64
-            }
+            PatchableFile::Patched(f) => f.cursor as u64,
         }
     }
 }
@@ -288,7 +290,10 @@ unsafe extern "C" fn file_exists(path: *const std::ffi::c_char) -> bool {
     }
 }
 
-unsafe extern "C" fn open_file(path: *const std::ffi::c_char, opts: *const std::ffi::c_char) -> *mut PatchableFile {
+unsafe extern "C" fn open_file(
+    path: *const std::ffi::c_char,
+    opts: *const std::ffi::c_char,
+) -> *mut PatchableFile {
     //println!("OPEN");
 
     let path_str = unsafe {
@@ -305,10 +310,18 @@ unsafe extern "C" fn open_file(path: *const std::ffi::c_char, opts: *const std::
 
     for c in opts_str.to_bytes() {
         match c {
-            b'r' | b'R' => { o.read(true); },
-            b'w' | b'W' => { o.create(true).write(true); },
-            b'a' | b'A' => { o.append(true).write(true); },
-            b'+' => { o.write(true).read(true); },
+            b'r' | b'R' => {
+                o.read(true);
+            }
+            b'w' | b'W' => {
+                o.create(true).write(true);
+            }
+            b'a' | b'A' => {
+                o.append(true).write(true);
+            }
+            b'+' => {
+                o.write(true).read(true);
+            }
             _ => {}
         }
     }
@@ -500,8 +513,8 @@ unsafe extern "C" fn tell_file(f: *mut PatchableFile) -> u32 {
 
 unsafe extern "C" fn write_file_funcs() {
     unsafe {
-        let get_file_funcs: extern "C" fn() -> *mut [*const (); 11]
-            = std::mem::transmute(0x0054e150);
+        let get_file_funcs: extern "C" fn() -> *mut [*const (); 11] =
+            std::mem::transmute(0x0054e150);
 
         let file_funcs = &mut *get_file_funcs();
 

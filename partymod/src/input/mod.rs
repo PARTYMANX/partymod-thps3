@@ -383,8 +383,6 @@ fn movie_event(sdl_ctx: &SDLContext, inp_ctx: &mut InputContext, event: &sdl3::e
     match event {
         sdl3::event::Event::KeyDown { .. } => {
             set_using_keyboard(inp_ctx, sdl_ctx, true);
-
-            
         }
         sdl3::event::Event::ControllerButtonDown { .. } => {
             set_using_keyboard(inp_ctx, sdl_ctx, false);
@@ -416,14 +414,24 @@ pub fn poll_movie_break_buttons() -> bool {
 
     let keyboard_state = sdl_ctx.event_pump.keyboard_state();
 
-    inp_ctx.gamepad_manager.poll_button_binding(0, "Ollie").0 |
-        inp_ctx.gamepad_manager.poll_button_binding(0, "Pause").0 |
-        inp_ctx.keybind_manager.poll_key_binding("Ollie", &keyboard_state) |
-        inp_ctx.keybind_manager.poll_key_binding("Pause", &keyboard_state) |
-        inp_ctx.keybind_manager.poll_menu_binding("Accept", &keyboard_state) |
-        inp_ctx.keybind_manager.poll_menu_binding("Accept2", &keyboard_state) |
-        inp_ctx.keybind_manager.poll_menu_binding("Back", &keyboard_state) |
-        keyboard_state.is_scancode_pressed(Scancode::Space)
+    inp_ctx.gamepad_manager.poll_button_binding(0, "Ollie").0
+        | inp_ctx.gamepad_manager.poll_button_binding(0, "Pause").0
+        | inp_ctx
+            .keybind_manager
+            .poll_key_binding("Ollie", &keyboard_state)
+        | inp_ctx
+            .keybind_manager
+            .poll_key_binding("Pause", &keyboard_state)
+        | inp_ctx
+            .keybind_manager
+            .poll_menu_binding("Accept", &keyboard_state)
+        | inp_ctx
+            .keybind_manager
+            .poll_menu_binding("Accept2", &keyboard_state)
+        | inp_ctx
+            .keybind_manager
+            .poll_menu_binding("Back", &keyboard_state)
+        | keyboard_state.is_scancode_pressed(Scancode::Space)
 }
 
 pub unsafe extern "C" fn viewer_shift_logic_code_wrapper(viewer: *mut ()) {

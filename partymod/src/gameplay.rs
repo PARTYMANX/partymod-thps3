@@ -29,8 +29,7 @@ unsafe extern "C" fn ledge_warp_acos() {
         );
 
         // call acos
-        let orig_acos: extern "C" fn()
-            = std::mem::transmute(0x00577cdc);
+        let orig_acos: extern "C" fn() = std::mem::transmute(0x00577cdc);
 
         orig_acos()
     }

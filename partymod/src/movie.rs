@@ -1,10 +1,26 @@
 use std::{ptr, slice, sync::mpsc::Receiver};
 
-use partymod_common::patch;
-use windows::{Win32::{Foundation::{HWND, RECT}, Graphics::Imaging::{CLSID_WICImagingFactory, GUID_WICPixelFormat24bppBGR, GUID_WICPixelFormat24bppRGB, GUID_WICPixelFormat32bppBGRA, GUID_WICPixelFormat32bppPBGRA, IWICBitmap, IWICImagingFactory, WICBitmapCacheOnDemand, WICRect}, Media::MediaFoundation::{CLSID_MFMediaEngineClassFactory, IMFMediaEngine, IMFMediaEngineClassFactory, IMFMediaEngineNotify, IMFMediaEngineNotify_Impl, MF_MEDIA_ENGINE_CALLBACK, MF_MEDIA_ENGINE_DXGI_MANAGER, MF_MEDIA_ENGINE_EVENT_CANPLAY, MF_MEDIA_ENGINE_EVENT_ERROR, MF_MEDIA_ENGINE_EVENT_LOADSTART, MF_MEDIA_ENGINE_EVENT_NOTIFYSTABLESTATE, MF_MEDIA_ENGINE_PLAYBACK_HWND, MF_MEDIA_ENGINE_VIDEO_OUTPUT_FORMAT, MF_MEDIA_ENGINE_WAITFORSTABLE_STATE, MF_VERSION, MFARGB, MFCreateAttributes, MFShutdown, MFStartup, MFVideoNormalizedRect}, System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, CoInitialize, CoUninitialize}}, core::{BSTR, w}};
-use windows_core::{ComObjectInner, IUnknown, implement};
+use partymod_common::{logger::LogLevel, patch};
+use windows::{
+    Win32::{
+        Foundation::{HWND, RECT},
+        Graphics::Imaging::{
+            CLSID_WICImagingFactory, GUID_WICPixelFormat32bppBGRA, IWICBitmap, IWICImagingFactory,
+            WICBitmapCacheOnDemand, WICRect,
+        },
+        Media::MediaFoundation::{
+            CLSID_MFMediaEngineClassFactory, IMFMediaEngine, IMFMediaEngineClassFactory,
+            IMFMediaEngineNotify, IMFMediaEngineNotify_Impl, MF_MEDIA_ENGINE_CALLBACK,
+            MF_MEDIA_ENGINE_EVENT_CANPLAY, MF_MEDIA_ENGINE_EVENT_ERROR,
+            MF_MEDIA_ENGINE_EVENT_LOADSTART, MF_VERSION, MFCreateAttributes, MFShutdown, MFStartup,
+        },
+        System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, CoInitialize, CoUninitialize},
+    },
+    core::BSTR,
+};
+use windows_core::{IUnknown, implement};
 
-use crate::{event, input, sfx, throttle, window};
+use crate::{event, input, logger, sfx, throttle, window};
 
 struct MoviePlayer {
     _mf_com: MfCom,
@@ -28,26 +44,34 @@ impl MoviePlayer {
         let mf_com = MfCom::new()?;
 
         let wic_factory: IWICImagingFactory = unsafe {
-            match CoCreateInstance(
-                &CLSID_WICImagingFactory,
-                None,
-                CLSCTX_INPROC_SERVER,
-            ) {
+            match CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER) {
                 Ok(v) => v,
                 Err(e) => {
+                    logger::log(
+                        LogLevel::Error,
+                        &format!(
+                            "Error creating movie player: Failed to create WIC imaging factory: {}",
+                            e
+                        ),
+                    );
+
                     return None;
                 }
             }
         };
 
-        let media_engine_factory: IMFMediaEngineClassFactory = unsafe { 
-            match CoCreateInstance(
-                &CLSID_MFMediaEngineClassFactory,
-                None,
-                CLSCTX_INPROC_SERVER,
-            ) {
+        let media_engine_factory: IMFMediaEngineClassFactory = unsafe {
+            match CoCreateInstance(&CLSID_MFMediaEngineClassFactory, None, CLSCTX_INPROC_SERVER) {
                 Ok(v) => v,
                 Err(e) => {
+                    logger::log(
+                        LogLevel::Error,
+                        &format!(
+                            "Error creating movie player: Failed to create MF media engine factory: {}",
+                            e
+                        ),
+                    );
+
                     return None;
                 }
             }
@@ -56,6 +80,14 @@ impl MoviePlayer {
         let attributes = unsafe {
             let mut attr = None;
             if let Err(e) = MFCreateAttributes(&mut attr, 1) {
+                logger::log(
+                    LogLevel::Error,
+                    &format!(
+                        "Error creating movie player: Failed to create MF attributes: {}",
+                        e
+                    ),
+                );
+
                 return None;
             }
 
@@ -64,26 +96,33 @@ impl MoviePlayer {
 
         let (sender, recv) = std::sync::mpsc::channel();
 
-        let notify: IUnknown = MediaEngineNotify {
-            sender,
-        }.into();
+        let notify: IUnknown = MediaEngineNotify { sender }.into();
 
         unsafe {
-            if let Err(e) = attributes.SetUnknown(
-                &MF_MEDIA_ENGINE_CALLBACK, 
-                &notify
-            ) {
+            if let Err(e) = attributes.SetUnknown(&MF_MEDIA_ENGINE_CALLBACK, &notify) {
+                logger::log(
+                    LogLevel::Error,
+                    &format!(
+                        "Error creating movie player: Failed to set media engine callback: {}",
+                        e
+                    ),
+                );
                 return None;
             }
         }
 
-        let media_engine = unsafe { 
-            match media_engine_factory.CreateInstance(
-                0,
-                &attributes,
-            ) {
+        let media_engine = unsafe {
+            match media_engine_factory.CreateInstance(0, &attributes) {
                 Ok(v) => v,
                 Err(e) => {
+                    logger::log(
+                        LogLevel::Error,
+                        &format!(
+                            "Error creating movie player: Failed to create media engine: {}",
+                            e
+                        ),
+                    );
+
                     return None;
                 }
             }
@@ -93,10 +132,23 @@ impl MoviePlayer {
 
         unsafe {
             if let Err(e) = media_engine.SetSource(&wpath) {
+                logger::log(
+                    LogLevel::Error,
+                    &format!(
+                        "Error creating movie player: Failed to set media source: {}",
+                        e
+                    ),
+                );
+
                 return None;
             }
-            
+
             if let Err(e) = media_engine.Load() {
+                logger::log(
+                    LogLevel::Error,
+                    &format!("Error creating movie player: Failed to load media: {}", e),
+                );
+
                 return None;
             }
         }
@@ -104,15 +156,19 @@ impl MoviePlayer {
         let mut break_button_debounce = input::poll_movie_break_buttons();
 
         loop {
-            match recv.recv_timeout(std::time::Duration::from_secs_f64(1.0/60.0)) {
+            match recv.recv_timeout(std::time::Duration::from_secs_f64(1.0 / 60.0)) {
                 Ok(v) => match v {
                     NotifyMessage::LoadReady => {
-                        println!("LOAD START RECEIVED");
                         break;
-                    },
-                    NotifyMessage::PlaybackReady => todo!(),
+                    }
+                    NotifyMessage::PlaybackReady => {
+                        panic!("Movie was signalled playback ready before load ready received!")
+                    }
                     NotifyMessage::Error => {
-                        println!("Error!");
+                        logger::log(
+                            LogLevel::Error,
+                            &format!("Error creating movie player: Media engine signalled error"),
+                        );
 
                         let _ = unsafe { media_engine.Shutdown() };
 
@@ -125,23 +181,25 @@ impl MoviePlayer {
 
                         return None;
                     }
-                },
+                }
             }
         }
 
         // wait for load or break event
         loop {
-            match recv.recv_timeout(std::time::Duration::from_secs_f64(1.0/60.0)) {
+            match recv.recv_timeout(std::time::Duration::from_secs_f64(1.0 / 60.0)) {
                 Ok(v) => match v {
                     NotifyMessage::LoadReady => {
-                        println!("LOAD START RECEIVED???");
-                    },
+                        panic!("Movie load was signalled ready after load ready received!")
+                    }
                     NotifyMessage::PlaybackReady => {
-                        println!("LOADED!");
                         break;
-                    },
+                    }
                     NotifyMessage::Error => {
-                        println!("Error!");
+                        logger::log(
+                            LogLevel::Error,
+                            &format!("Error creating movie player: Media engine signalled error"),
+                        );
 
                         let _ = unsafe { media_engine.Shutdown() };
 
@@ -154,7 +212,7 @@ impl MoviePlayer {
 
                         return None;
                     }
-                },
+                }
             }
         }
 
@@ -163,6 +221,13 @@ impl MoviePlayer {
 
         unsafe {
             if let Err(e) = media_engine.GetNativeVideoSize(Some(&mut width), Some(&mut height)) {
+                logger::log(
+                    LogLevel::Error,
+                    &format!(
+                        "Error creating movie player: Failed to get video size: {}",
+                        e
+                    ),
+                );
                 let _ = media_engine.Shutdown();
 
                 return None;
@@ -179,10 +244,18 @@ impl MoviePlayer {
                 width,
                 height,
                 &GUID_WICPixelFormat32bppBGRA,
-                WICBitmapCacheOnDemand
+                WICBitmapCacheOnDemand,
             ) {
                 Ok(v) => v,
                 Err(e) => {
+                    logger::log(
+                        LogLevel::Error,
+                        &format!(
+                            "Error creating movie player: Failed to create WIC bitmap: {}",
+                            e
+                        ),
+                    );
+
                     let _ = media_engine.Shutdown();
 
                     return None;
@@ -193,8 +266,18 @@ impl MoviePlayer {
         let texture = unsafe {
             let d3d8_device = *(0x00970e48 as *const *const std::ffi::c_void);
 
-            let d3d8_create_texture: *const extern "stdcall" fn(*const std::ffi::c_void, u32, u32, u32, u32, u32, u32, *mut *const std::ffi::c_void) -> u32
-                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x50));
+            let d3d8_create_texture: *const extern "stdcall" fn(
+                *const std::ffi::c_void,
+                u32,
+                u32,
+                u32,
+                u32,
+                u32,
+                u32,
+                *mut *const std::ffi::c_void,
+            ) -> u32 = std::mem::transmute(
+                (*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x50),
+            );
 
             let mut texture = ptr::null();
 
@@ -202,10 +285,10 @@ impl MoviePlayer {
                 d3d8_device,
                 width,
                 height,
-                1, // 1 level
-                0, // no usage flags
-                21, // 32 bit ARGB
-                1, // managed storage
+                1,            // 1 level
+                0,            // no usage flags
+                21,           // 32 bit ARGB
+                1,            // managed storage
                 &mut texture, // pointer out
             );
 
@@ -232,8 +315,7 @@ impl MoviePlayer {
 
     fn play(&mut self) {
         unsafe {
-            if !self.media_engine.HasVideo().as_bool() && 
-                !self.media_engine.HasAudio().as_bool() {
+            if !self.media_engine.HasVideo().as_bool() && !self.media_engine.HasAudio().as_bool() {
                 return;
             }
         }
@@ -247,6 +329,8 @@ impl MoviePlayer {
 
         unsafe {
             if let Err(e) = self.media_engine.Play() {
+                logger::log(LogLevel::Error, &format!("Error playing movie: {}", e));
+
                 return;
             }
 
@@ -261,32 +345,35 @@ impl MoviePlayer {
                     Ok(_) => {
                         // documentation says this should only return Ok if there is a new frame.
                         // in reality, this always returns Ok. good stuff, microsoft
-                        self.media_engine.TransferVideoFrame(
-                            &self.bitmap,
-                            None,
-                            &bitmap_rect,
-                            None,
-                        ).unwrap();
+                        self.media_engine
+                            .TransferVideoFrame(&self.bitmap, None, &bitmap_rect, None)
+                            .unwrap();
 
                         self.copy_frame_to_texture();
                         self.display_frame();
-                    },
-                    Err(_) => {},
+                    }
+                    Err(_) => {}
                 }
 
                 // check that the player hasn't run into an error
                 match self.recv.try_recv() {
                     Ok(v) => match v {
                         NotifyMessage::Error => {
-                            println!("Error!");
+                            logger::log(
+                                LogLevel::Error,
+                                &format!("Received error message during playback"),
+                            );
                             return;
                         }
                         _ => {
-                            println!("got other message???");
+                            logger::log(
+                                LogLevel::Error,
+                                &format!("Got unexpected message type during media playback"),
+                            );
                             return;
                         }
                     },
-                    Err(_) => {},
+                    Err(_) => {}
                 }
 
                 if Self::check_break_event(&mut self.break_button_debounce) {
@@ -305,10 +392,19 @@ impl MoviePlayer {
         };
 
         unsafe {
-            let texture_lock: *const extern "stdcall" fn(*const std::ffi::c_void, u32, *mut D3D8LockedRect, *const [i32; 4], u32) -> u32
-                = std::mem::transmute((*(self.texture as *const *const std::ffi::c_void)).byte_add(0x40));
-            let texture_unlock: *const extern "stdcall" fn(*const std::ffi::c_void, u32) -> u32
-                = std::mem::transmute((*(self.texture as *const *const std::ffi::c_void)).byte_add(0x44));
+            let texture_lock: *const extern "stdcall" fn(
+                *const std::ffi::c_void,
+                u32,
+                *mut D3D8LockedRect,
+                *const [i32; 4],
+                u32,
+            ) -> u32 = std::mem::transmute(
+                (*(self.texture as *const *const std::ffi::c_void)).byte_add(0x40),
+            );
+            let texture_unlock: *const extern "stdcall" fn(*const std::ffi::c_void, u32) -> u32 =
+                std::mem::transmute(
+                    (*(self.texture as *const *const std::ffi::c_void)).byte_add(0x44),
+                );
 
             let mut locked_rect = D3D8LockedRect {
                 pitch: 0,
@@ -317,12 +413,13 @@ impl MoviePlayer {
 
             if (*texture_lock)(
                 self.texture,
-                0,  // level 0
-                &mut locked_rect,   // output pointer
-                std::ptr::null(),   // null rect to get full texture
-                0,  // no flags
-            ) != 0 {
-                println!("FAILED TO LOCK TEXTURE!");
+                0,                // level 0
+                &mut locked_rect, // output pointer
+                std::ptr::null(), // null rect to get full texture
+                0,                // no flags
+            ) != 0
+            {
+                logger::log(LogLevel::Error, &format!("Failed to lock movie texture!"));
                 return;
             }
 
@@ -331,11 +428,9 @@ impl MoviePlayer {
                 (locked_rect.pitch as u32 * self.height) as usize,
             );
 
-            self.bitmap.CopyPixels(
-                &wic_rect,
-                locked_rect.pitch as u32,
-                bits_slice,
-            ).unwrap();
+            self.bitmap
+                .CopyPixels(&wic_rect, locked_rect.pitch as u32, bits_slice)
+                .unwrap();
 
             // old code to fix the format before I realized that it was already right
             /*for row in 0..self.height {
@@ -353,9 +448,10 @@ impl MoviePlayer {
 
             if (*texture_unlock)(
                 self.texture,
-                0,  // level 0
-            ) != 0 {
-                println!("FAILED TO UNLOCK TEXTURE!");
+                0, // level 0
+            ) != 0
+            {
+                logger::log(LogLevel::Error, &format!("Failed to unlock movie texture!"));
                 return;
             }
         }
@@ -365,96 +461,163 @@ impl MoviePlayer {
         unsafe {
             let d3d8_device = *(0x00970e48 as *const *const std::ffi::c_void);
 
-            let d3d8_clear: *const extern "stdcall" fn(*const std::ffi::c_void, u32, *const [i32; 4], u32, u32, f32, u32) -> u32
-                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x90));
-            let d3d8_begin_scene: *const extern "stdcall" fn(*const std::ffi::c_void) -> u32
-                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x88));
-            let d3d8_end_scene: *const extern "stdcall" fn(*const std::ffi::c_void) -> u32
-                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x8c));
-            let d3d8_set_vertex_shader: *const extern "stdcall" fn(*const std::ffi::c_void, u32) -> u32
-                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x130));
-            let d3d8_set_texture_stage_state: *const extern "stdcall" fn(*const std::ffi::c_void, u32, u32, u32) -> u32
-                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0xfc));
-            let d3d8_set_render_state: *const extern "stdcall" fn(*const std::ffi::c_void, u32, u32) -> u32
-                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0xc8));
-            let d3d8_set_texture: *const extern "stdcall" fn(*const std::ffi::c_void, u32, *const std::ffi::c_void) -> u32
-                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0xf4));
-            let d3d8_draw_primitive_up: *const extern "stdcall" fn(*const std::ffi::c_void, u32, u32, *const MovieVertex, u32) -> u32
-                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x120));
-            let d3d8_present: *const extern "stdcall" fn(*const std::ffi::c_void, *const [i32; 4], *const [i32; 4], *const HWND, *const std::ffi::c_void) -> u32
-                = std::mem::transmute((*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x3c));
+            let d3d8_clear: *const extern "stdcall" fn(
+                *const std::ffi::c_void,
+                u32,
+                *const [i32; 4],
+                u32,
+                u32,
+                f32,
+                u32,
+            ) -> u32 = std::mem::transmute(
+                (*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x90),
+            );
+            let d3d8_begin_scene: *const extern "stdcall" fn(*const std::ffi::c_void) -> u32 =
+                std::mem::transmute(
+                    (*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x88),
+                );
+            let d3d8_end_scene: *const extern "stdcall" fn(*const std::ffi::c_void) -> u32 =
+                std::mem::transmute(
+                    (*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x8c),
+                );
+            let d3d8_set_vertex_shader: *const extern "stdcall" fn(
+                *const std::ffi::c_void,
+                u32,
+            ) -> u32 = std::mem::transmute(
+                (*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x130),
+            );
+            let d3d8_set_texture_stage_state: *const extern "stdcall" fn(
+                *const std::ffi::c_void,
+                u32,
+                u32,
+                u32,
+            ) -> u32 = std::mem::transmute(
+                (*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0xfc),
+            );
+            let d3d8_set_render_state: *const extern "stdcall" fn(
+                *const std::ffi::c_void,
+                u32,
+                u32,
+            ) -> u32 = std::mem::transmute(
+                (*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0xc8),
+            );
+            let d3d8_set_texture: *const extern "stdcall" fn(
+                *const std::ffi::c_void,
+                u32,
+                *const std::ffi::c_void,
+            ) -> u32 = std::mem::transmute(
+                (*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0xf4),
+            );
+            let d3d8_draw_primitive_up: *const extern "stdcall" fn(
+                *const std::ffi::c_void,
+                u32,
+                u32,
+                *const MovieVertex,
+                u32,
+            ) -> u32 = std::mem::transmute(
+                (*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x120),
+            );
+            let d3d8_present: *const extern "stdcall" fn(
+                *const std::ffi::c_void,
+                *const [i32; 4],
+                *const [i32; 4],
+                *const HWND,
+                *const std::ffi::c_void,
+            ) -> u32 = std::mem::transmute(
+                (*(d3d8_device as *const *const std::ffi::c_void)).byte_add(0x3c),
+            );
 
             (*d3d8_clear)(
                 d3d8_device,
-                0, // no rectangles
+                0,                // no rectangles
                 std::ptr::null(), // no rectangles
-                1, // D3DCLEAR_TARGET
-                0xff000000, // black clear color
-                0.0, // z 0 (unused)
-                0, // stencil 0 (unused)
+                1,                // D3DCLEAR_TARGET
+                0xff000000,       // black clear color
+                0.0,              // z 0 (unused)
+                0,                // stencil 0 (unused)
             );
-            
+
             if (*d3d8_begin_scene)(d3d8_device) != 0 {
-                println!("Failed to begin scene!");
+                logger::log(LogLevel::Error, &format!("Failed to begin movie scene!"));
                 return;
             }
 
             if (*d3d8_set_vertex_shader)(d3d8_device, 0x144) != 0 {
-                println!("Failed to set shader!");
+                logger::log(
+                    LogLevel::Error,
+                    &format!("Failed to set movie vertex shader!"),
+                );
                 return;
             }
 
             if (*d3d8_set_render_state)(
                 d3d8_device,
-                22,  // cull mode
+                22, // cull mode
                 1,  // cull none
-            ) != 0 {
-                println!("Failed to set texture color op!");
+            ) != 0
+            {
+                logger::log(LogLevel::Error, &format!("Failed to set movie cull mode!"));
+                return;
+            }
+
+            if (*d3d8_set_texture_stage_state)(
+                d3d8_device,
+                0, // stage 0
+                1, // color op
+                4, // modulate
+            ) != 0
+            {
+                logger::log(
+                    LogLevel::Error,
+                    &format!("Failed to set movie texture color op!"),
+                );
                 return;
             }
 
             if (*d3d8_set_texture_stage_state)(
                 d3d8_device,
                 0,  // stage 0
-                1,  // color op
-                4,  // modulate
-            ) != 0 {
-                println!("Failed to set texture color op!");
-                return;
-            }
-
-            if (*d3d8_set_texture_stage_state)(
-                d3d8_device,
-                0,  // stage 0
-                13,  // address u
+                13, // address u
                 3,  // clamp
-            ) != 0 {
-                println!("Failed to set texture u address mode!");
+            ) != 0
+            {
+                logger::log(
+                    LogLevel::Error,
+                    &format!("Failed to set movie texture address mode!"),
+                );
                 return;
             }
 
             if (*d3d8_set_texture_stage_state)(
                 d3d8_device,
                 0,  // stage 0
-                14,  // address v
+                14, // address v
                 3,  // clamp
-            ) != 0 {
-                println!("Failed to set texture v address mode!");
+            ) != 0
+            {
+                logger::log(
+                    LogLevel::Error,
+                    &format!("Failed to set movie texture address mode!"),
+                );
                 return;
             }
 
             if (*d3d8_set_texture_stage_state)(
                 d3d8_device,
                 0,  // stage 0
-                16,  // mag filter
+                16, // mag filter
                 2,  // linear
-            ) != 0 {
-                println!("Failed to set texture magnify filter!");
+            ) != 0
+            {
+                logger::log(
+                    LogLevel::Error,
+                    &format!("Failed to set movie texture filter!"),
+                );
                 return;
             }
 
             if (*d3d8_set_texture)(d3d8_device, 0, self.texture) != 0 {
-                println!("Failed to set texture!");
+                logger::log(LogLevel::Error, &format!("Failed to set movie texture!"));
                 return;
             }
 
@@ -528,13 +691,14 @@ impl MoviePlayer {
                 2, // two triangles
                 vertices.as_ptr(),
                 size_of::<MovieVertex>() as u32,
-            ) != 0 {
-                println!("Failed to draw!");
+            ) != 0
+            {
+                logger::log(LogLevel::Error, &format!("Failed to draw movie!"));
                 return;
             }
 
             if (*d3d8_end_scene)(d3d8_device) != 0 {
-                println!("Failed to end scene!");
+                logger::log(LogLevel::Error, &format!("Failed to end movie scene!"));
                 return;
             }
 
@@ -544,8 +708,9 @@ impl MoviePlayer {
                 std::ptr::null(),
                 std::ptr::null(),
                 std::ptr::null(),
-            ) != 0 {
-                println!("Failed to present!");
+            ) != 0
+            {
+                logger::log(LogLevel::Error, &format!("Failed to present movie frame!"));
                 return;
             }
         };
@@ -590,15 +755,15 @@ struct MovieVertex {
 impl Drop for MoviePlayer {
     fn drop(&mut self) {
         unsafe {
-            let texture_release: *const extern "stdcall" fn(*const std::ffi::c_void) -> u32
-                = std::mem::transmute((*(self.texture as *const *const std::ffi::c_void)).byte_add(0x08));
+            let texture_release: *const extern "stdcall" fn(*const std::ffi::c_void) -> u32 =
+                std::mem::transmute(
+                    (*(self.texture as *const *const std::ffi::c_void)).byte_add(0x08),
+                );
 
             let _ = (*texture_release)(self.texture);
         };
 
-        let _ = unsafe {
-            self.media_engine.Shutdown()
-        };
+        let _ = unsafe { self.media_engine.Shutdown() };
     }
 }
 
@@ -609,12 +774,17 @@ impl MfCom {
     fn new() -> Option<Self> {
         unsafe {
             let coinit_result = CoInitialize(None);
-            
+
             if coinit_result.is_err() {
                 return None;
             };
 
             if let Err(e) = MFStartup(MF_VERSION, 0) {
+                logger::log(
+                    LogLevel::Error,
+                    &format!("Error initializing Media Foundation: {}", e),
+                );
+
                 return None;
             };
         }
@@ -647,26 +817,22 @@ struct MediaEngineNotify {
 impl IMFMediaEngineNotify_Impl for MediaEngineNotify_Impl {
     fn EventNotify(&self, event: u32, _param1: usize, _param2: u32) -> windows::core::Result<()> {
         if event == MF_MEDIA_ENGINE_EVENT_LOADSTART.0 as u32 {
-            println!("LOAD START");
             self.sender.send(NotifyMessage::LoadReady).unwrap();
         } else if event == MF_MEDIA_ENGINE_EVENT_CANPLAY.0 as u32 {
-            println!("CAN PLAY");
             self.sender.send(NotifyMessage::PlaybackReady).unwrap();
         } else if event == MF_MEDIA_ENGINE_EVENT_ERROR.0 as u32 {
-            println!("ERROR");
             self.sender.send(NotifyMessage::Error).unwrap();
         } else {
-            //println!("GOT EVENT: {}", event);
         }
-        
+
         Ok(())
     }
 }
 
 fn play_movie(path: &str) {
     let prefix_cstr = unsafe {
-        let get_path_prefix: extern "C" fn() -> *const std::ffi::c_char
-            = std::mem::transmute(0x004032d0);
+        let get_path_prefix: extern "C" fn() -> *const std::ffi::c_char =
+            std::mem::transmute(0x004032d0);
 
         std::ffi::CStr::from_ptr(get_path_prefix())
     };
@@ -674,14 +840,12 @@ fn play_movie(path: &str) {
     let prefix = prefix_cstr.to_string_lossy();
     let fullpath = format!("{}{}.mpg", prefix, path);
 
-    println!("Playing {}", &fullpath);
+    logger::log(LogLevel::Info, &format!("Playing movie: {}", &fullpath));
     if let Some(mut player) = MoviePlayer::new(&fullpath) {
         // stop all streams
         unsafe {
-            let close_streams_1: extern "C" fn()
-                = std::mem::transmute(0x004c5c90);
-            let close_streams_2: extern "C" fn(i32)
-                = std::mem::transmute(0x004c5cb0);
+            let close_streams_1: extern "C" fn() = std::mem::transmute(0x004c5c90);
+            let close_streams_2: extern "C" fn(i32) = std::mem::transmute(0x004c5cb0);
 
             close_streams_1();
             close_streams_2(-1);
@@ -699,11 +863,11 @@ fn play_movie(path: &str) {
 
 fn is_exiting() -> bool {
     unsafe {
-        let get_mainloop_manager: extern "C" fn(bool) -> *const std::ffi::c_char
-            = std::mem::transmute(0x004c02b0);
-        let release_mainloop_manager: extern "thiscall" fn(*const std::ffi::c_char)
-            = std::mem::transmute(0x004c0300);
-        
+        let get_mainloop_manager: extern "C" fn(bool) -> *const std::ffi::c_char =
+            std::mem::transmute(0x004c02b0);
+        let release_mainloop_manager: extern "thiscall" fn(*const std::ffi::c_char) =
+            std::mem::transmute(0x004c0300);
+
         let mainloop_manager = get_mainloop_manager(false);
 
         let result = if !mainloop_manager.is_null() {
@@ -719,14 +883,12 @@ fn is_exiting() -> bool {
 }
 
 unsafe extern "C" fn intro_play_movie(path: *const std::ffi::c_char, _unk: u32) -> u32 {
-    let cstr = unsafe {
-        std::ffi::CStr::from_ptr(path)
-    };
+    let cstr = unsafe { std::ffi::CStr::from_ptr(path) };
 
     let native_path = cstr.to_string_lossy();
 
     play_movie(&native_path);
-    
+
     if is_exiting() {
         // there is very slow deinit code after this, so just skip that and exit
         std::process::exit(0);
@@ -736,9 +898,7 @@ unsafe extern "C" fn intro_play_movie(path: *const std::ffi::c_char, _unk: u32) 
 }
 
 unsafe extern "C" fn script_play_movie(path: *const std::ffi::c_char) {
-    let cstr = unsafe {
-        std::ffi::CStr::from_ptr(path)
-    };
+    let cstr = unsafe { std::ffi::CStr::from_ptr(path) };
 
     let native_path = cstr.to_string_lossy();
     play_movie(&native_path);

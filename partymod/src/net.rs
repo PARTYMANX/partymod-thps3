@@ -36,12 +36,18 @@ pub fn init() {
 fn patch_online_service(net_ctx: &mut NetContext) {
     let domain = config::get_string("Miscellaneous", "OnlineDomain", "openspy.net");
 
-    logger::log(LogLevel::Info, &format!("Patching online server: {}", domain));
+    logger::log(
+        LogLevel::Info,
+        &format!("Patching online server: {}", domain),
+    );
 
     let peerchat = match std::ffi::CString::new(format!("peerchat.{}", domain)) {
         Ok(v) => v,
         Err(e) => {
-            logger::log(LogLevel::Error, &format!("Failed to create peerchat server URL: {}", e));
+            logger::log(
+                LogLevel::Error,
+                &format!("Failed to create peerchat server URL: {}", e),
+            );
             return;
         }
     };
@@ -49,16 +55,31 @@ fn patch_online_service(net_ctx: &mut NetContext) {
     let master_server = match std::ffi::CString::new(format!("master.{}", domain)) {
         Ok(v) => v,
         Err(e) => {
-            logger::log(LogLevel::Error, &format!("Failed to create master server URL: {}", e));
+            logger::log(
+                LogLevel::Error,
+                &format!("Failed to create master server URL: {}", e),
+            );
             return;
         }
     };
 
     unsafe {
-        patch::patch_u32((0x0050b278 + 1) as *mut (), peerchat.as_c_str().as_ptr() as u32);
-        patch::patch_u32((0x00517845 + 1) as *mut (), master_server.as_c_str().as_ptr() as u32);
-        patch::patch_u32((0x0051785d + 1) as *mut (), master_server.as_c_str().as_ptr() as u32);
-        patch::patch_u32((0x0051959a + 1) as *mut (), master_server.as_c_str().as_ptr() as u32);
+        patch::patch_u32(
+            (0x0050b278 + 1) as *mut (),
+            peerchat.as_c_str().as_ptr() as u32,
+        );
+        patch::patch_u32(
+            (0x00517845 + 1) as *mut (),
+            master_server.as_c_str().as_ptr() as u32,
+        );
+        patch::patch_u32(
+            (0x0051785d + 1) as *mut (),
+            master_server.as_c_str().as_ptr() as u32,
+        );
+        patch::patch_u32(
+            (0x0051959a + 1) as *mut (),
+            master_server.as_c_str().as_ptr() as u32,
+        );
     }
 
     net_ctx.peerchat_url = Some(peerchat);
@@ -84,7 +105,11 @@ struct SocketAddressIn {
     sin_zero: [u8; 8],
 }
 
-unsafe extern "stdcall" fn bind_wrapper(socket: *const (), address: *mut SocketAddressIn, namelen: i32) -> i32 {
+unsafe extern "stdcall" fn bind_wrapper(
+    socket: *const (),
+    address: *mut SocketAddressIn,
+    namelen: i32,
+) -> i32 {
     let net_ctx = unsafe {
         match &*NET_CONTEXT.get() {
             Some(v) => v,
@@ -97,10 +122,8 @@ unsafe extern "stdcall" fn bind_wrapper(socket: *const (), address: *mut SocketA
     }
 
     match net_ctx.their_bind {
-        Some(their_bind) => unsafe {
-            (their_bind)(socket, address, namelen)
-        },
-        None => panic!("Tried to call bind() wrapper without bind() being initialized!")
+        Some(their_bind) => unsafe { (their_bind)(socket, address, namelen) },
+        None => panic!("Tried to call bind() wrapper without bind() being initialized!"),
     }
 }
 
@@ -109,8 +132,8 @@ pub unsafe fn patch_bind(net_ctx: &mut NetContext) {
         let bind_addr_base = (0x00519500 + 1) as *mut ();
 
         let their_bind_addr = bind_addr_base.byte_add(4 + *(bind_addr_base as *const usize));
-        let their_bind: unsafe extern "stdcall" fn(*const (), *mut SocketAddressIn, i32) -> i32
-            = std::mem::transmute(their_bind_addr);
+        let their_bind: unsafe extern "stdcall" fn(*const (), *mut SocketAddressIn, i32) -> i32 =
+            std::mem::transmute(their_bind_addr);
 
         net_ctx.their_bind = Some(their_bind);
 

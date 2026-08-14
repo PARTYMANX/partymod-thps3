@@ -32,8 +32,7 @@ unsafe extern "C" fn our_random(out_of: u32) -> u32 {
     };
 
     unsafe {
-        let their_random: unsafe extern "C" fn(u32) -> u32
-            = std::mem::transmute(0x0040e4c0);
+        let their_random: unsafe extern "C" fn(u32) -> u32 = std::mem::transmute(0x0040e4c0);
 
         their_random(out_of);
     }

@@ -6,26 +6,80 @@ use crate::file;
 
 pub fn init() {
     // patch in bits.tdx containing correct shadow.png
-    file::register_patch(".\\data\\models\\bits\\bits.tdx", include_bytes!("patches/bits.bps"));
+    file::register_patch(
+        ".\\data\\models\\bits\\bits.tdx",
+        include_bytes!("patches/bits.bps"),
+    );
 
     // fix all bsps which lack face cull mode data
-    file::register_patch(".\\data\\levels\\ap\\ap.bsp", include_bytes!("patches/ap.bps"));
-    file::register_patch(".\\data\\levels\\burn\\burn.bsp", include_bytes!("patches/burn.bps"));
-    file::register_patch(".\\data\\levels\\can\\can.bsp", include_bytes!("patches/can.bps"));
-    file::register_patch(".\\data\\levels\\foun\\foun.bsp", include_bytes!("patches/foun.bps"));
-    file::register_patch(".\\data\\levels\\la\\la.bsp", include_bytes!("patches/la.bps"));
-    file::register_patch(".\\data\\levels\\rio\\rio.bsp", include_bytes!("patches/rio.bps"));
-    file::register_patch(".\\data\\levels\\ros\\ros.bsp", include_bytes!("patches/ros.bps"));
-    file::register_patch(".\\data\\levels\\shp\\shp.bsp", include_bytes!("patches/shp.bps"));
-    file::register_patch(".\\data\\levels\\si\\si.bsp", include_bytes!("patches/si.bps"));
-    file::register_patch(".\\data\\levels\\sk3ed_bch\\sk3ed_bch.bsp", include_bytes!("patches/sk3ed_bch.bps"));
-    file::register_patch(".\\data\\levels\\sk3ed_indr\\sk3ed_indr.bsp", include_bytes!("patches/sk3ed_indr.bps"));
-    file::register_patch(".\\data\\levels\\sk3ed_schl\\sk3ed_schl.bsp", include_bytes!("patches/sk3ed_schl.bps"));
-    file::register_patch(".\\data\\levels\\skateshop\\skateshop.bsp", include_bytes!("patches/skateshop.bps"));
-    file::register_patch(".\\data\\levels\\sub\\sub.bsp", include_bytes!("patches/sub.bps"));
-    file::register_patch(".\\data\\levels\\tok\\tok.bsp", include_bytes!("patches/tok.bps"));
-    file::register_patch(".\\data\\levels\\tut\\tut.bsp", include_bytes!("patches/tut.bps"));
-    file::register_patch(".\\data\\levels\\ware\\ware.bsp", include_bytes!("patches/ware.bps"));
+    file::register_patch(
+        ".\\data\\levels\\ap\\ap.bsp",
+        include_bytes!("patches/ap.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\burn\\burn.bsp",
+        include_bytes!("patches/burn.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\can\\can.bsp",
+        include_bytes!("patches/can.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\foun\\foun.bsp",
+        include_bytes!("patches/foun.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\la\\la.bsp",
+        include_bytes!("patches/la.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\rio\\rio.bsp",
+        include_bytes!("patches/rio.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\ros\\ros.bsp",
+        include_bytes!("patches/ros.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\shp\\shp.bsp",
+        include_bytes!("patches/shp.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\si\\si.bsp",
+        include_bytes!("patches/si.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\sk3ed_bch\\sk3ed_bch.bsp",
+        include_bytes!("patches/sk3ed_bch.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\sk3ed_indr\\sk3ed_indr.bsp",
+        include_bytes!("patches/sk3ed_indr.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\sk3ed_schl\\sk3ed_schl.bsp",
+        include_bytes!("patches/sk3ed_schl.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\skateshop\\skateshop.bsp",
+        include_bytes!("patches/skateshop.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\sub\\sub.bsp",
+        include_bytes!("patches/sub.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\tok\\tok.bsp",
+        include_bytes!("patches/tok.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\tut\\tut.bsp",
+        include_bytes!("patches/tut.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\ware\\ware.bsp",
+        include_bytes!("patches/ware.bps"),
+    );
 
     // alt patches that remove pseudo-env map flags from materials
     // otherwise those materials don't render
@@ -37,12 +91,9 @@ pub fn init() {
 
 unsafe fn skater_shadow_render_wrapper(unk: u32) {
     unsafe {
-        let orig_skater_shadow_render: extern "C" fn(u32)
-            = std::mem::transmute(0x00529170);
-        let rw_get_render_state: extern "C" fn(u32, *mut i32)
-            = std::mem::transmute(0x0055ce60);
-        let rw_set_render_state: extern "C" fn(u32, i32)
-            = std::mem::transmute(0x0055ce10);
+        let orig_skater_shadow_render: extern "C" fn(u32) = std::mem::transmute(0x00529170);
+        let rw_get_render_state: extern "C" fn(u32, *mut i32) = std::mem::transmute(0x0055ce60);
+        let rw_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x0055ce10);
 
         // going in, depth test/write have already been disabled.
 
@@ -89,14 +140,12 @@ struct RW3DVertex {
 
 unsafe fn draw_skater_shadow() {
     unsafe {
-        let rw_im_3d_transform: extern "C" fn(*const RW3DVertex, u32, *const (), u32)
-            = std::mem::transmute(0x00561010);
-        let rw_im_3d_render_indexed_primitive: extern "C" fn(u32, *const u32, u32)
-            = std::mem::transmute(0x00561110);
-        let rw_get_render_state: extern "C" fn(u32, *mut i32)
-            = std::mem::transmute(0x0055ce60);
-        let rw_set_render_state: extern "C" fn(u32, i32)
-            = std::mem::transmute(0x0055ce10);
+        let rw_im_3d_transform: extern "C" fn(*const RW3DVertex, u32, *const (), u32) =
+            std::mem::transmute(0x00561010);
+        let rw_im_3d_render_indexed_primitive: extern "C" fn(u32, *const u32, u32) =
+            std::mem::transmute(0x00561110);
+        let rw_get_render_state: extern "C" fn(u32, *mut i32) = std::mem::transmute(0x0055ce60);
+        let rw_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x0055ce10);
 
         let vertex_count = *(0x00930bb8 as *const u32);
         let p_vertices = 0x0090b8c8 as *mut RW3DVertex;
@@ -130,9 +179,9 @@ unsafe fn draw_skater_shadow() {
         rw_set_render_state(10, 3);
         // set blend dst to dst color
         rw_set_render_state(11, 9);
-        
+
         rw_im_3d_transform(p_vertices, vertex_count, std::ptr::null(), 1);
-        
+
         // enable alpha blending
         rw_set_render_state(12, 1);
         // set filter to linear
@@ -154,14 +203,12 @@ unsafe fn draw_skater_shadow() {
 
 unsafe fn draw_blob_shadow() {
     unsafe {
-        let rw_im_3d_transform: extern "C" fn(*const RW3DVertex, u32, *const (), u32)
-            = std::mem::transmute(0x00561010);
-        let rw_im_3d_render_indexed_primitive: extern "C" fn(u32, *const u32, u32)
-            = std::mem::transmute(0x00561110);
-        let rw_get_render_state: extern "C" fn(u32, *mut i32)
-            = std::mem::transmute(0x0055ce60);
-        let rw_set_render_state: extern "C" fn(u32, i32)
-            = std::mem::transmute(0x0055ce10);
+        let rw_im_3d_transform: extern "C" fn(*const RW3DVertex, u32, *const (), u32) =
+            std::mem::transmute(0x00561010);
+        let rw_im_3d_render_indexed_primitive: extern "C" fn(u32, *const u32, u32) =
+            std::mem::transmute(0x00561110);
+        let rw_get_render_state: extern "C" fn(u32, *mut i32) = std::mem::transmute(0x0055ce60);
+        let rw_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x0055ce10);
 
         let vertex_count = *(0x00930bbc as *const u32);
         let p_vertices = 0x00928778 as *mut RW3DVertex;
@@ -202,7 +249,7 @@ unsafe fn draw_blob_shadow() {
 
         rw_im_3d_transform(p_vertices, vertex_count * 4, std::ptr::null(), 1);
         rw_im_3d_render_indexed_primitive(3, p_indices, vertex_count * 6);
-        
+
         rw_set_render_state(12, current_alpha_state);
         rw_set_render_state(9, current_filter_state);
         rw_set_render_state(10, current_src_blend_state);
@@ -214,15 +261,18 @@ unsafe fn draw_blob_shadow() {
 unsafe fn patch_shadows() {
     unsafe {
         // skater shadow render
-        patch::patch_call(0x00501548 as *mut (), skater_shadow_render_wrapper as *const ());
+        patch::patch_call(
+            0x00501548 as *mut (),
+            skater_shadow_render_wrapper as *const (),
+        );
 
         // fix skater shadow alpha
         patch::patch_nop(0x0050209b as *mut (), 37);
-        patch::patch_call(0x0050209b as *mut (), draw_skater_shadow as *const());
+        patch::patch_call(0x0050209b as *mut (), draw_skater_shadow as *const ());
 
         // fix blob shadow alpha
         patch::patch_nop(0x00501839 as *mut (), 45);
-        patch::patch_call(0x00501839 as *mut (), draw_blob_shadow as *const());
+        patch::patch_call(0x00501839 as *mut (), draw_blob_shadow as *const ());
         patch::patch_byte((0x00501866 + 2) as *mut (), 0x08); // only add 8 to ESP
 
         // don't skip drawing blob shadows
@@ -236,10 +286,8 @@ unsafe fn patch_shadows() {
 
 unsafe extern "C" fn do_draw_side_wrapper(unk: *const ()) -> u32 {
     unsafe {
-        let orig_func: extern "C" fn(*const ()) -> u32
-            = std::mem::transmute(0x00526fc0);
-        let rw_set_render_state: extern "C" fn(u32, i32)
-            = std::mem::transmute(0x0055ce10);
+        let orig_func: extern "C" fn(*const ()) -> u32 = std::mem::transmute(0x00526fc0);
+        let rw_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x0055ce10);
 
         // material dump
 
@@ -283,15 +331,12 @@ unsafe extern "C" fn do_draw_side_wrapper(unk: *const ()) -> u32 {
 
         orig_func(unk)
     }
-    
 }
 
 unsafe extern "C" fn materialdump(sector: *mut (), out: *mut ()) {
     unsafe {
-        let orig_func: extern "C" fn(*mut (), *mut ()) -> u32
-            = std::mem::transmute(0x004f9640);
+        let orig_func: extern "C" fn(*mut (), *mut ()) -> u32 = std::mem::transmute(0x004f9640);
 
-        
         let material = *((sector as *mut *mut ()).byte_add(8));
 
         let bytes = material as *mut [u8; 128];
@@ -319,8 +364,7 @@ unsafe extern "C" fn materialdump(sector: *mut (), out: *mut ()) {
         }
 
         print!("\n");
-        
-        
+
         orig_func(sector, out);
 
         /*if (*bytes)[0x1a] & 0x20 != 0 {
@@ -331,8 +375,7 @@ unsafe extern "C" fn materialdump(sector: *mut (), out: *mut ()) {
 
 unsafe extern "C" fn texturedump(material: *mut ()) {
     unsafe {
-        let orig_func: extern "C" fn(*mut ()) -> u32
-            = std::mem::transmute(0x004f4320);
+        let orig_func: extern "C" fn(*mut ()) -> u32 = std::mem::transmute(0x004f4320);
 
         if material.is_null() || (*(material as *mut *mut ())).is_null() {
             orig_func(material);
@@ -341,12 +384,11 @@ unsafe extern "C" fn texturedump(material: *mut ()) {
 
         let texture = *((*(material as *mut *mut ())) as *mut *mut ());
         if !texture.is_null() {
-            
             let name_bytes = (texture.byte_add(0x10)) as *mut [u8; 128];
             print!(" TEXTURE: ");
             let name = CStr::from_bytes_until_nul(&*name_bytes).unwrap();
             print!("{}", name.to_string_lossy());
-            
+
             let bytes = texture as *mut [u8; 128];
             for (i, byte) in (*bytes).iter().enumerate() {
                 if i % 4 == 0 {
@@ -354,7 +396,7 @@ unsafe extern "C" fn texturedump(material: *mut ()) {
                 }
                 print!("{:02x}", byte);
             }
-            
+
             print!("\n");
         }
 

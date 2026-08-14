@@ -1,4 +1,4 @@
-use std::{time, thread};
+use std::{thread, time};
 
 pub struct FramerateThrottle {
     minimum_frame_length: time::Duration,
@@ -9,7 +9,7 @@ impl FramerateThrottle {
     pub fn new(minimum_frame_length: time::Duration) -> Self {
         Self {
             minimum_frame_length,
-            next_frame: time::Instant::now()
+            next_frame: time::Instant::now(),
         }
     }
 

@@ -102,24 +102,22 @@ unsafe fn patch_fast_quit() {
 #[unsafe(no_mangle)]
 pub extern "stdcall" fn DllMain(_hinst_dll: usize, fdw_reason: u32, _lp_reserved: usize) -> i32 {
     match fdw_reason {
-        windows_sys::Win32::System::SystemServices::DLL_PROCESS_ATTACH => {
-            unsafe {
-                patch_init();
-                patch_fast_quit();
-                event::patch();
-                window::patch();
-                settings::patch();
-                file::patch();
+        windows_sys::Win32::System::SystemServices::DLL_PROCESS_ATTACH => unsafe {
+            patch_init();
+            patch_fast_quit();
+            event::patch();
+            window::patch();
+            settings::patch();
+            file::patch();
 
-                input::patch();
+            input::patch();
 
-                gameplay::patch();
-                gfx::patch();
-                sfx::patch();
-                misc::patch();
-                movie::patch();
-            }
-        }
+            gameplay::patch();
+            gfx::patch();
+            sfx::patch();
+            misc::patch();
+            movie::patch();
+        },
         windows_sys::Win32::System::SystemServices::DLL_THREAD_ATTACH => {}
         windows_sys::Win32::System::SystemServices::DLL_THREAD_DETACH => {}
         windows_sys::Win32::System::SystemServices::DLL_PROCESS_DETACH => {}
