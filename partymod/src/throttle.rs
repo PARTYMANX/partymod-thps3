@@ -1,4 +1,4 @@
-use partymod_common::{syncunsafecell::SyncUnsafeCell, throttle::FramerateThrottle};
+use partymod_common::{patch, syncunsafecell::SyncUnsafeCell, throttle::FramerateThrottle};
 
 pub static THROTTLE_CONTEXT: SyncUnsafeCell<Option<FramerateThrottle>> = SyncUnsafeCell::new(None);
 
@@ -18,4 +18,12 @@ pub fn throttle_frame() {
     };
 
     throttle_context.throttle();
+}
+
+pub unsafe fn patch() {
+    unsafe {
+        patch::patch_byte(0x004c0507 as *mut (), 0xEB); // skip original framerate cap logic
+        patch::patch_nop(0x004c04ef as *mut (), 24);
+        patch::patch_call(0x004c04ef as *mut (), throttle_frame as *const ());
+    }
 }

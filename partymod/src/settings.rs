@@ -38,6 +38,14 @@ extern "C" fn init_settings() {
     }
 }
 
+pub fn get_shadow_setting() -> bool {
+    unsafe {
+        let ptr_shadows = 0x005b4e76 as *mut bool;
+
+        *ptr_shadows
+    }
+}
+
 pub unsafe fn patch() {
     unsafe {
         patch::patch_jmp(0x0040b150 as *mut (), init_settings as *const ());

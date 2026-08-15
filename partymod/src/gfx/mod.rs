@@ -1,10 +1,26 @@
 use std::ffi::CStr;
 
-use partymod_common::patch;
+use partymod_common::{patch, syncunsafecell::SyncUnsafeCell};
 
-use crate::file;
+use crate::{file, settings::get_shadow_setting, window};
+
+pub struct GfxContext {
+    orig_create_device: *const (),
+}
+
+unsafe impl Sync for GfxContext {}
+unsafe impl Send for GfxContext {}
+
+pub static GFX_CONTEXT: SyncUnsafeCell<Option<GfxContext>> = SyncUnsafeCell::new(None);
 
 pub fn init() {
+    unsafe {
+        let ctx = &mut *GFX_CONTEXT.get();
+        *ctx = Some(GfxContext {
+            orig_create_device: std::ptr::null(),
+        });
+    }
+
     // patch in bits.tdx containing correct shadow.png
     file::register_patch(
         ".\\data\\models\\bits\\bits.tdx",
@@ -258,6 +274,27 @@ unsafe fn draw_blob_shadow() {
     }
 }
 
+extern "C" fn create_shadow_wrapper(
+    obj: *const (),
+    unk1: *const (),
+    unk2: u32,
+    unk3: u8,
+    is_hq_shadow: bool,
+    unk4: f32,
+) {
+    unsafe {
+        let orig_func: extern "C" fn(*const (), *const (), u32, u8, bool, f32) =
+            std::mem::transmute(0x005010e0);
+
+        if !get_shadow_setting() {
+            // always use lq shadow
+            orig_func(obj, unk1, unk2, unk3, false, unk4);
+        } else {
+            orig_func(obj, unk1, unk2, unk3, is_hq_shadow, unk4);
+        }
+    }
+}
+
 unsafe fn patch_shadows() {
     unsafe {
         // skater shadow render
@@ -274,6 +311,12 @@ unsafe fn patch_shadows() {
         patch::patch_nop(0x00501839 as *mut (), 45);
         patch::patch_call(0x00501839 as *mut (), draw_blob_shadow as *const ());
         patch::patch_byte((0x00501866 + 2) as *mut (), 0x08); // only add 8 to ESP
+
+        // always draw shadows
+        patch::patch_nop(0x0042fa4f as *mut (), 2);
+        patch::patch_nop(0x005010a6 as *mut (), 2);
+        patch::patch_nop(0x00501102 as *mut (), 6);
+        patch::patch_call(0x004ab35b as *mut (), create_shadow_wrapper as *const ());
 
         // don't skip drawing blob shadows
         patch::patch_nop(0x005017d3 as *mut (), 2);
@@ -488,6 +531,116 @@ unsafe fn patch_draw_side() {
     }
 }
 
+pub unsafe fn patch_aspect_ratio(aspect_ratio: f32) {
+    unsafe {
+        patch::patch_f32(0x0058eb14 as *mut (), aspect_ratio);
+        patch::patch_f32(0x0058d96c as *mut (), aspect_ratio);
+    }
+}
+
+unsafe extern "C" fn get_gfx_manager_wrapper_every_frame(create: bool) -> *const std::ffi::c_void {
+    // function to sneak in some stuff to do every frame
+    let (width, height) = window::get_window_size();
+    let aspect_ratio = width as f32 / height as f32;
+    unsafe {
+        patch_aspect_ratio(aspect_ratio);
+
+        let orig_func: extern "C" fn(bool) -> *const std::ffi::c_void =
+            std::mem::transmute(0x004f92d0);
+
+        orig_func(create)
+    }
+}
+
+unsafe fn patch_every_frame() {
+    unsafe {
+        patch::patch_call(
+            0x0042f7b2 as *mut (),
+            get_gfx_manager_wrapper_every_frame as *const (),
+        );
+    }
+}
+
+unsafe extern "stdcall" fn create_device_wrapper(
+    d3d8: *const std::ffi::c_void,
+    adapter: u32,
+    ty: u32,
+    hwnd: *const std::ffi::c_void,
+    behavior_flags: u32,
+    present_params: *mut std::ffi::c_void,
+    device_out: *mut std::ffi::c_void,
+) -> u32 {
+    unsafe {
+        let gfx_context = match &mut *GFX_CONTEXT.get() {
+            Some(v) => v,
+            None => panic!("Tried to use uninitialized file context!"),
+        };
+
+        let orig_func: extern "stdcall" fn(
+            *const std::ffi::c_void,
+            u32,
+            u32,
+            *const std::ffi::c_void,
+            u32,
+            *mut std::ffi::c_void,
+            *mut std::ffi::c_void,
+        ) -> u32 = std::mem::transmute(gfx_context.orig_create_device);
+
+        *(present_params.byte_add(12) as *mut u32) = 1;
+        *(present_params.byte_add(20) as *mut u32) = 1;
+
+        if *(present_params.byte_add(28) as *mut u32) != 0 {
+            *(present_params.byte_add(44) as *mut u32) = 0;
+            *(present_params.byte_add(48) as *mut u32) = 0;
+        } else {
+            *(present_params.byte_add(44) as *mut u32) = 0;
+            *(present_params.byte_add(48) as *mut u32) = 1;
+        }
+
+        orig_func(
+            d3d8,
+            adapter,
+            ty,
+            hwnd,
+            behavior_flags,
+            present_params,
+            device_out,
+        )
+    }
+}
+
+unsafe extern "stdcall" fn create_d3d8_wrapper(version: u32) -> *const std::ffi::c_void {
+    unsafe {
+        let orig_func: extern "stdcall" fn(u32) -> *const std::ffi::c_void =
+            std::mem::transmute(0x00569d20);
+
+        let result = orig_func(version);
+
+        if !result.is_null() {
+            let gfx_context = match &mut *GFX_CONTEXT.get() {
+                Some(v) => v,
+                None => panic!("Tried to use uninitialized gfx context!"),
+            };
+
+            let create_device = (*(result as *const *mut *const ())).byte_add(0x3c);
+
+            gfx_context.orig_create_device = *create_device;
+            patch::patch_u32(
+                create_device as *mut (),
+                create_device_wrapper as *const () as u32,
+            );
+        }
+
+        result
+    }
+}
+
+unsafe fn patch_presentation_mode() {
+    unsafe {
+        patch::patch_call(0x0054e433 as *mut (), create_d3d8_wrapper as *const ());
+    }
+}
+
 static F_ZERO: f32 = 0.0;
 static F_1_OVER_512: f32 = 1.0 / 512.0;
 
@@ -495,5 +648,7 @@ pub unsafe fn patch() {
     unsafe {
         patch_shadows();
         patch_draw_side();
+        patch_every_frame();
+        patch_presentation_mode();
     }
 }

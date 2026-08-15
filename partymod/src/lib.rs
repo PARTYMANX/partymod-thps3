@@ -115,6 +115,7 @@ pub extern "stdcall" fn DllMain(_hinst_dll: usize, fdw_reason: u32, _lp_reserved
             gameplay::patch();
             gfx::patch();
             sfx::patch();
+            throttle::patch();
             misc::patch();
             movie::patch();
         },

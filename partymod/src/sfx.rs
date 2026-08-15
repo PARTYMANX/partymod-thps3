@@ -7,11 +7,21 @@ pub fn get_master_volume() -> f64 {
         let release_sfx_manager: unsafe extern "thiscall" fn(*const std::ffi::c_void) =
             std::mem::transmute(0x00402fd0);
 
+        let miles_get_master_volume_addr = 0x0058d3ac as *const *const ();
+        let miles_get_master_volume: unsafe extern "C" fn(*const std::ffi::c_void) -> i8 =
+            std::mem::transmute(*miles_get_master_volume_addr);
+
         let sfx_manager = get_sfx_manager(false);
 
-        let result = *(sfx_manager.byte_add(4) as *const i8);
+        let mut result = *(sfx_manager.byte_add(4) as *const i8);
 
         release_sfx_manager(sfx_manager);
+
+        // if the volume is 0, that may mean it's just uninitialized
+        // get the volume directly from miles sound system
+        if result == 0 {
+            result = miles_get_master_volume(*(sfx_manager as *const *const std::ffi::c_void));
+        }
 
         result as f64 / 127.0
     }

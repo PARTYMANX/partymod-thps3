@@ -234,6 +234,15 @@ impl MoviePlayer {
             }
         }
 
+        logger::log(
+            LogLevel::Info,
+            &format!(
+                "MASTER VOLUME: {}, SOUND VOLUME: {}",
+                sfx::get_master_volume(),
+                sfx::get_sound_volume()
+            ),
+        );
+
         let volume = sfx::get_sound_volume() * sfx::get_master_volume();
         unsafe {
             let _ = media_engine.SetVolume(volume);
