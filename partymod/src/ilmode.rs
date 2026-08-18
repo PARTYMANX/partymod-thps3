@@ -54,8 +54,6 @@ static COMP_LEVELS: [bool; 10] = [
 const STATS_AND_BOARDS_MASK: u32 = 0x01f80000;
 
 extern "C" fn retry_hook() {
-    println!("GOT HERE");
-
     unsafe {
         let is_career_mode: unsafe extern "C" fn() -> bool = std::mem::transmute(0x00421540);
         if is_career_mode() {
@@ -104,8 +102,6 @@ extern "C" fn retry_hook() {
 }
 
 extern "C" fn load_requested_level_hook() {
-    println!("LOAD REQUESTED LEVEL");
-
     unsafe {
         let ctx = match &mut *ILMODE_CONTEXT.get() {
             Some(v) => v,
