@@ -1,8 +1,11 @@
-#![allow(dead_code)]
+enum ArenaEntry<T> {
+    Occupied(T),
+    Free(Option<usize>),
+}
 
 pub struct GenArena<T> {
     // TODO: add count
-    list: Vec<Option<T>>,
+    list: Vec<ArenaEntry<T>>,
     generations: Vec<u64>,
     first_open: Option<usize>,
 }
@@ -25,18 +28,12 @@ impl<T> GenArena<T> {
     pub fn push(&mut self, val: T) -> GenArenaKey {
         // find open index, if it exists
         if let Some(idx) = self.first_open {
-            assert!(matches!(self.list[idx], None));
-
-            self.list[idx] = Some(val);
-
-            // find next open index, if it exists
-            self.first_open = None;
-            for i in idx..self.list.len() {
-                if matches!(self.list[i], None) {
-                    self.first_open = Some(i);
-                    break;
-                }
+            match self.list[idx] {
+                ArenaEntry::Occupied(_) => panic!("First open index was occupied!"),
+                ArenaEntry::Free(v) => self.first_open = v,
             }
+
+            self.list[idx] = ArenaEntry::Occupied(val);
 
             self.generations[idx] += 1;
 
@@ -47,7 +44,7 @@ impl<T> GenArena<T> {
         } else {
             let idx = self.list.len();
 
-            self.list.push(Some(val));
+            self.list.push(ArenaEntry::Occupied(val));
             self.generations.push(0);
 
             GenArenaKey {
@@ -63,12 +60,12 @@ impl<T> GenArena<T> {
         }
 
         if key.generation == self.generations[key.index] {
-            if self.list[key.index].is_some() {
-                self.list[key.index] = None;
-
-                return true;
-            } else {
-                return false;
+            match self.list[key.index] {
+                ArenaEntry::Occupied(_) => {
+                    self.list[key.index] = ArenaEntry::Free(self.first_open);
+                    return true;
+                }
+                ArenaEntry::Free(_) => return false,
             }
         }
 
@@ -84,7 +81,7 @@ impl<T> GenArena<T> {
             return None;
         }
 
-        if let Some(data) = &self.list[key.index] {
+        if let ArenaEntry::Occupied(data) = &self.list[key.index] {
             return Some(data);
         } else {
             return None;
@@ -100,7 +97,7 @@ impl<T> GenArena<T> {
             return None;
         }
 
-        if let Some(data) = &mut self.list[key.index] {
+        if let ArenaEntry::Occupied(data) = &mut self.list[key.index] {
             return Some(data);
         } else {
             return None;
@@ -121,7 +118,7 @@ impl<T> GenArena<T> {
 }
 
 pub struct Iter<'a, T> {
-    iter: core::slice::Iter<'a, Option<T>>,
+    iter: core::slice::Iter<'a, ArenaEntry<T>>,
 }
 
 impl<'a, T> Iterator for Iter<'a, T> {
@@ -129,7 +126,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(slot) = self.iter.next() {
-            if let Some(item) = slot {
+            if let ArenaEntry::Occupied(item) = slot {
                 return Some(item);
             }
         }
@@ -139,7 +136,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
 }
 
 pub struct IterMut<'a, T> {
-    iter: core::slice::IterMut<'a, Option<T>>,
+    iter: core::slice::IterMut<'a, ArenaEntry<T>>,
 }
 
 impl<'a, T> Iterator for IterMut<'a, T> {
@@ -147,7 +144,7 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(slot) = self.iter.next() {
-            if let Some(item) = slot {
+            if let ArenaEntry::Occupied(item) = slot {
                 return Some(item);
             }
         }

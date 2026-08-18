@@ -1,4 +1,4 @@
-use std::{ptr, slice, sync::mpsc::Receiver};
+use std::{path::PathBuf, ptr, slice, sync::mpsc::Receiver};
 
 use partymod_common::{logger::LogLevel, patch};
 use windows::{
@@ -849,8 +849,23 @@ fn play_movie(path: &str) {
     let prefix = prefix_cstr.to_string_lossy();
     let fullpath = format!("{}{}.mpg", prefix, path);
 
-    logger::log(LogLevel::Info, &format!("Playing movie: {}", &fullpath));
-    if let Some(mut player) = MoviePlayer::new(&fullpath) {
+    let pathbuf = PathBuf::from(fullpath);
+    let fullfullpath = std::fs::canonicalize(pathbuf).unwrap();
+    let fullfullpathstrfull = fullfullpath.to_str().unwrap();
+
+    // strip the path prefix
+    // microsoft just hates dealing with their own conventions...
+    // technically not correct, but most likely should work.
+    let fullfullpathstr = match fullfullpathstrfull.strip_prefix("\\\\?\\") {
+        Some(v) => v,
+        None => fullfullpathstrfull,
+    };
+
+    logger::log(
+        LogLevel::Info,
+        &format!("Playing movie: {}", &fullfullpathstr),
+    );
+    if let Some(mut player) = MoviePlayer::new(&fullfullpathstr) {
         // stop all streams
         unsafe {
             let close_streams_1: extern "C" fn() = std::mem::transmute(0x004c5c90);

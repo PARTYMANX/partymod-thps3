@@ -1,10 +1,12 @@
 use partymod_common::patch;
 
+mod args;
 mod config;
 mod event;
 mod file;
 mod gameplay;
 mod gfx;
+mod ilmode;
 mod input;
 mod logger;
 mod misc;
@@ -24,14 +26,8 @@ fn init_patch() {
         Err(e) => panic!("failed to get current exe path: {e}"),
     };
 
+    args::init();
     config::init(exe_path.parent().unwrap());
-
-    /*if config::get_config_bool("Graphics", "UseNewRenderer", true) {
-        unsafe { gfx_vk::patch() };
-        gfx_vk::init();
-    } else {
-        unsafe { gfx_d3d::patch() };
-    }*/
 
     logger::init();
     sdl::init();
@@ -53,6 +49,7 @@ fn init_patch() {
     net::init();
     misc::init();
     gfx::init();
+    ilmode::init();
 }
 
 extern "C" fn init_and_get_version() -> u32 {
@@ -98,6 +95,40 @@ unsafe fn patch_fast_quit() {
     }
 }
 
+extern "C" fn get_version_number(script: *const std::ffi::c_void) -> u32 {
+    unsafe {
+        let unk_func: unsafe extern "thiscall" fn(
+            *const std::ffi::c_void,
+            *const std::ffi::c_char,
+            *mut *const std::ffi::c_void,
+            u32,
+        ) = std::mem::transmute(0x00429dc0);
+        let set_string: unsafe extern "C" fn(*const std::ffi::c_void, *const std::ffi::c_char) =
+            std::mem::transmute(0x004ce940);
+
+        let mut ptr = std::ptr::null();
+        unk_func(script, c"id".as_ptr(), &mut ptr, 1);
+
+        let cstr = if ilmode::is_enabled() {
+            let str = &format!("{} - IL MODE ENABLED", VERSION);
+            std::ffi::CString::new(str.as_str()).unwrap()
+        } else {
+            std::ffi::CString::new(VERSION).unwrap()
+        };
+
+        set_string(ptr, cstr.as_ptr());
+    }
+
+    1
+}
+
+// patches the version number string on the main menu
+unsafe fn patch_version_number() {
+    unsafe {
+        patch::patch_jmp(0x00425e10 as *mut (), get_version_number as *const ());
+    }
+}
+
 //#[unsafe(export_name = "DllMain")]
 #[unsafe(no_mangle)]
 pub extern "stdcall" fn DllMain(_hinst_dll: usize, fdw_reason: u32, _lp_reserved: usize) -> i32 {
@@ -105,6 +136,7 @@ pub extern "stdcall" fn DllMain(_hinst_dll: usize, fdw_reason: u32, _lp_reserved
         windows_sys::Win32::System::SystemServices::DLL_PROCESS_ATTACH => unsafe {
             patch_init();
             patch_fast_quit();
+            patch_version_number();
             event::patch();
             window::patch();
             settings::patch();
