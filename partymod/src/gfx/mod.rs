@@ -171,7 +171,7 @@ unsafe fn draw_skater_shadow() {
         let vertices = std::slice::from_raw_parts_mut(p_vertices, vertex_count as usize);
 
         for vertex in vertices {
-            vertex.color = 0x60ffffff;
+            vertex.color = 0x80ffffff;
         }
 
         let mut current_alpha_state = 0;
@@ -234,7 +234,7 @@ unsafe fn draw_blob_shadow() {
         let vertices = std::slice::from_raw_parts_mut(p_vertices, vertex_count as usize);
 
         for vertex in vertices {
-            vertex.color = 0x60ffffff;
+            vertex.color = 0xffffffff;
         }
 
         let mut current_alpha_state = 0;
@@ -323,7 +323,7 @@ unsafe fn patch_shadows() {
         // increase blob shadow view distance
         patch::patch_f32((0x0049466d + 1) as *mut (), 2400.0);
         // reduce blob shadow size
-        patch::patch_f32((0x005017d5 + 1) as *mut (), 16.0);
+        patch::patch_f32((0x005017d5 + 1) as *mut (), 12.0);
     }
 }
 

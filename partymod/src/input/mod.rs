@@ -7,9 +7,7 @@ use partymod_config_common::{Button, Stick};
 use sdl3::keyboard::Scancode;
 
 use crate::{
-    config, event,
-    logger::{self, LOGGER_CONTEXT},
-    sdl::{SDL_CONTEXT, SDLContext},
+    config, event, file, logger::{self, LOGGER_CONTEXT}, sdl::{SDL_CONTEXT, SDLContext},
 };
 
 mod device;
@@ -55,7 +53,7 @@ fn init_context() {
             network_menu_exit_debounce: false,
 
             is_playing_movie: false,
-        })
+        });
     }
 }
 
@@ -260,6 +258,10 @@ impl InputManager {
         setup_controls();
 
         event::register_handler(event_handler);
+        file::register_patch(
+            ".\\data\\scripts\\optionsmenu.qb",
+            include_bytes!("patches/optionsmenu.bps")
+        );
 
         let _ = self.new_device(0);
 

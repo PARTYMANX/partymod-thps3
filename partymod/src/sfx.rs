@@ -60,8 +60,16 @@ unsafe fn patch_sound_cleanup() {
     }
 }
 
+unsafe fn patch_volume_fix() {
+    unsafe {
+        patch::patch_f32(0x0058d5f4 as *mut (), 0.00025);
+        patch::patch_byte(0x00408b8f as *mut (), 0xeb); // sets all samples to volume??? bad
+    }
+}
+
 pub unsafe fn patch() {
     unsafe {
         patch_sound_cleanup();
+        //patch_volume_fix();
     }
 }
