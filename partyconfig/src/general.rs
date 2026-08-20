@@ -112,6 +112,16 @@ pub struct GeneralState {
     custom_resolution_height: u32,
     windowed: bool,
     borderless: bool,
+
+    shadows: bool,
+    particles: bool,
+    animating_textures: bool,
+    distance_fog: bool,
+    low_detail_models: bool,
+
+    play_intro: bool,
+    il_mode: bool,
+    disable_trick_limit: bool,
 }
 
 impl GeneralState {
@@ -140,6 +150,16 @@ impl GeneralState {
         let windowed = config_file.get_config_bool("Graphics", "Windowed", false);
         let borderless = config_file.get_config_bool("Graphics", "Borderless", false);
 
+        let shadows = config_file.get_config_bool("Graphics", "Shadows", true);
+        let particles = config_file.get_config_bool("Graphics", "Particles", true);
+        let animating_textures = config_file.get_config_bool("Graphics", "AnimatedTextures", true);
+        let distance_fog = config_file.get_config_bool("Graphics", "DistanceFog", false);
+        let low_detail_models = config_file.get_config_bool("Graphics", "LowDetailModels", false);
+
+        let play_intro = config_file.get_config_bool("Miscellaneous", "PlayIntro", true);
+        let il_mode = config_file.get_config_bool("Miscellaneous", "ILMode", false);
+        let disable_trick_limit = config_file.get_config_bool("Miscellaneous", "NoTrickLimit", false);
+
         Self {
             resolution,
             using_custom_resolution,
@@ -149,6 +169,14 @@ impl GeneralState {
             custom_resolution_height,
             windowed,
             borderless,
+            shadows,
+            particles,
+            animating_textures,
+            distance_fog,
+            low_detail_models,
+            play_intro,
+            il_mode,
+            disable_trick_limit,
         }
     }
 
@@ -172,6 +200,16 @@ impl GeneralState {
 
         config_file.set_config_bool("Graphics", "Windowed", self.windowed);
         config_file.set_config_bool("Graphics", "Borderless", self.borderless);
+
+        config_file.set_config_bool("Graphics", "Shadows", self.shadows);
+        config_file.set_config_bool("Graphics", "Particles", self.particles);
+        config_file.set_config_bool("Graphics", "AnimatedTextures", self.animating_textures);
+        config_file.set_config_bool("Graphics", "DistanceFog", self.distance_fog);
+        config_file.set_config_bool("Graphics", "LowDetailModels", self.low_detail_models);
+
+        config_file.set_config_bool("Miscellaneous", "PlayIntro", self.play_intro);
+        config_file.set_config_bool("Miscellaneous", "ILMode", self.il_mode);
+        config_file.set_config_bool("Miscellaneous", "NoTrickLimit", self.disable_trick_limit);
     }
 }
 
@@ -186,6 +224,14 @@ impl Default for GeneralState {
             custom_resolution_height: 0,
             windowed: false,
             borderless: false,
+            shadows: true,
+            particles: true,
+            animating_textures: true,
+            distance_fog: false,
+            low_detail_models: false,
+            play_intro: true,
+            il_mode: false,
+            disable_trick_limit: false,
         }
     }
 }
@@ -318,14 +364,94 @@ pub fn general_page(width: u32, height: u32, resolution_list: Vec<String>) -> Co
         horizontal(vec![
             groupbox(
                 "Graphics".to_string(),
-                text("well we need something here".to_string()).into(),
+                vertical(vec![
+                    checkbox("Shadows".to_string())
+                        .on_toggle(|app_state: &mut AppState, checked| {
+                            app_state.general_state.shadows = checked;
+                        })
+                        .state_hook(|app_state: &AppState, checkbox_state| {
+                            checkbox_state.checked = app_state.general_state.shadows;
+                        })
+                        .into(),
+                    checkbox("Particles".to_string())
+                        .on_toggle(|app_state: &mut AppState, checked| {
+                            app_state.general_state.particles = checked;
+                        })
+                        .state_hook(|app_state: &AppState, checkbox_state| {
+                            checkbox_state.checked = app_state.general_state.particles;
+                        })
+                        .into(),
+                    checkbox("Animating Textures".to_string())
+                        .on_toggle(|app_state: &mut AppState, checked| {
+                            app_state.general_state.animating_textures = checked;
+                        })
+                        .state_hook(|app_state: &AppState, checkbox_state| {
+                            checkbox_state.checked = app_state.general_state.animating_textures;
+                        })
+                        .into(),
+                    checkbox("Distance Fog".to_string())
+                        .on_toggle(|app_state: &mut AppState, checked| {
+                            app_state.general_state.distance_fog = checked;
+                        })
+                        .state_hook(|app_state: &AppState, checkbox_state| {
+                            checkbox_state.checked = app_state.general_state.distance_fog;
+                        })
+                        .into(),
+                    checkbox("Low Detail Models".to_string())
+                        .on_toggle(|app_state: &mut AppState, checked| {
+                            app_state.general_state.low_detail_models = checked;
+                        })
+                        .state_hook(|app_state: &AppState, checkbox_state| {
+                            checkbox_state.checked = app_state.general_state.low_detail_models;
+                        })
+                        .into(),
+                ])
+                .v_position(VerticalOffset::AlignTop(4))
+                .spacing(8)
+                .into(),
             )
             .width(Size::Exact(width / 2))
             .height(Size::Exact(height / 2))
             .into(),
             groupbox(
                 "Miscellaneous".to_string(),
-                text("well we need something here".to_string()).into(),
+                vertical(vec![
+                    checkbox("Always Play Intro".to_string())
+                        .on_toggle(|app_state: &mut AppState, checked| {
+                            app_state.general_state.play_intro = checked;
+                        })
+                        .state_hook(|app_state: &AppState, checkbox_state| {
+                            checkbox_state.checked = app_state.general_state.play_intro;
+                        })
+                        .into(),
+                    checkbox("IL Mode*".to_string())
+                        .on_toggle(|app_state: &mut AppState, checked| {
+                            app_state.general_state.il_mode = checked;
+                        })
+                        .state_hook(|app_state: &AppState, checkbox_state| {
+                            checkbox_state.checked = app_state.general_state.il_mode;
+                        })
+                        .into(),
+                    checkbox("Disable Trick Limit**".to_string())
+                        .on_toggle(|app_state: &mut AppState, checked| {
+                            app_state.general_state.disable_trick_limit = checked;
+                        })
+                        .state_hook(|app_state: &AppState, checkbox_state| {
+                            checkbox_state.checked = app_state.general_state.disable_trick_limit;
+                        })
+                        .into(),
+                    text("*For speedrun practice.\nResets goals when a retrying\nfor practicing a single level\n".to_string())
+                        .height(Size::Exact(50))
+                        //.width(Size::Fill) // breaks the text entirely for unknown reasons
+                        .into(),
+                    text("**For scoring. Removes the\ncap at 251x combo.".to_string())
+                        .height(Size::Exact(32))
+                        .width(Size::Fill)
+                        .into(),
+                ])
+                .v_position(VerticalOffset::AlignTop(4))
+                .spacing(4)
+                .into(),
             )
             .width(Size::Exact(width / 2))
             .height(Size::Exact(height / 2))

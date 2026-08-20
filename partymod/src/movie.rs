@@ -875,6 +875,8 @@ fn play_movie(path: &str) {
             close_streams_2(-1);
         }
 
+        let old_master_volume = set_miles_master_volume(0);
+
         input::set_cursor_inactive();
         input::set_playing_movie(true);
 
@@ -882,7 +884,35 @@ fn play_movie(path: &str) {
 
         input::set_playing_movie(false);
         input::set_cursor_active();
+
+        set_miles_master_volume(old_master_volume);
     }
+}
+
+fn set_miles_master_volume(volume: i8) -> i8 {
+    let mut master_volume = 0;
+
+    unsafe {
+        let get_miles_manager: unsafe extern "C" fn(bool) -> *const std::ffi::c_void =
+            std::mem::transmute(0x00402f80);
+        let release_miles_manager: unsafe extern "C" fn() =
+            std::mem::transmute(0x00402fd0);
+
+        let miles_get_master_volume = 0x0058d3ac as *const extern "stdcall" fn(*const std::ffi::c_void) -> i8;
+        let miles_set_master_volume = 0x0058d378 as *const extern "stdcall" fn(*const std::ffi::c_void, i8);
+
+        let miles_manager = get_miles_manager(false);
+
+        if !miles_manager.is_null() {
+            master_volume = (*miles_get_master_volume)(*(miles_manager as *const *const std::ffi::c_void));
+
+            (*miles_set_master_volume)(*(miles_manager as *const *const std::ffi::c_void), volume);
+
+            release_miles_manager();
+        }
+    }
+
+    master_volume
 }
 
 fn is_exiting() -> bool {

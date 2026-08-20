@@ -2,7 +2,7 @@ use std::ffi::CStr;
 
 use partymod_common::{patch, syncunsafecell::SyncUnsafeCell};
 
-use crate::{file, settings::get_shadow_setting, window};
+use crate::{config, file, window};
 
 pub struct GfxContext {
     orig_create_device: *const (),
@@ -103,6 +103,38 @@ pub fn init() {
     //file::register_patch(".\\data\\levels\\la\\la.bsp", include_bytes!("patches/la-noreflect.bps"));
     //file::register_patch(".\\data\\levels\\shp\\shp.bsp", include_bytes!("patches/shp-noreflect.bps"));
     //file::register_patch(".\\data\\levels\\si\\si.bsp", include_bytes!("patches/si-noreflect.bps"));
+}
+
+pub fn init_settings() {
+    unsafe {
+        let ptr_custom_settings = 0x008510b1 as *mut bool;
+        let ptr_distance_fog = 0x008510b2 as *mut bool;
+        let ptr_low_detail_models = 0x008510b3 as *mut bool;
+        let ptr_frame_cap = 0x008510b4 as *mut bool;
+        let ptr_bit_depth = 0x0085108c as *mut u32;
+        let ptr_shadows = 0x005b4e76 as *mut bool;
+        let ptr_particles = 0x005b4e77 as *mut bool;
+        let ptr_animating_textures = 0x005b4e78 as *mut bool;
+
+        *ptr_animating_textures = config::get_bool("Graphics", "AnimatedTextures", true);
+        *ptr_particles = config::get_bool("Graphics", "Particles", true);
+        *ptr_shadows = config::get_bool("Graphics", "Shadows", true);
+        *ptr_distance_fog = config::get_bool("Graphics", "DistanceFog", false);
+        *ptr_low_detail_models = config::get_bool("Graphics", "LowDetailModels", false);
+
+        *ptr_custom_settings = true;
+        *ptr_frame_cap = true;
+
+        *ptr_bit_depth = 32;
+    }
+}
+
+fn get_shadow_setting() -> bool {
+    unsafe {
+        let ptr_shadows = 0x005b4e76 as *mut bool;
+
+        *ptr_shadows
+    }
 }
 
 unsafe fn skater_shadow_render_wrapper(unk: u32) {

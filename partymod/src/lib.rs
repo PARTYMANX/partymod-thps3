@@ -50,6 +50,7 @@ fn init_patch() {
     misc::init();
     gfx::init();
     ilmode::init();
+    gameplay::init();
 }
 
 extern "C" fn init_and_get_version() -> u32 {

@@ -2,6 +2,8 @@ use std::arch::asm;
 
 use partymod_common::patch;
 
+use crate::config;
+
 unsafe extern "C" fn ledge_warp_acos() {
     unsafe {
         // clamps st(0) to [-1, 1]
@@ -42,6 +44,19 @@ unsafe fn patch_ledge_warp() {
 }
 
 // TODO: trick limit, tag limit
+pub fn init() {
+    if config::get_bool("Miscellaneous", "NoTrickLimit", false) {
+        unsafe {
+            patch_trick_limit();
+        }
+    }
+}
+
+unsafe fn patch_trick_limit() {
+    unsafe {
+        patch::patch_byte(0x004355ad as *mut (), 0xeb);
+    }
+}
 
 pub unsafe fn patch() {
     unsafe {
