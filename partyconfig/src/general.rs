@@ -122,6 +122,7 @@ pub struct GeneralState {
     play_intro: bool,
     il_mode: bool,
     disable_trick_limit: bool,
+    glyph_style: u32,
 }
 
 impl GeneralState {
@@ -159,6 +160,7 @@ impl GeneralState {
         let play_intro = config_file.get_config_bool("Miscellaneous", "PlayIntro", true);
         let il_mode = config_file.get_config_bool("Miscellaneous", "ILMode", false);
         let disable_trick_limit = config_file.get_config_bool("Miscellaneous", "NoTrickLimit", false);
+        let glyph_style = config_file.get_config_int("Miscellaneous", "ButtonGlyphStyle", 0) as u32;
 
         Self {
             resolution,
@@ -177,6 +179,7 @@ impl GeneralState {
             play_intro,
             il_mode,
             disable_trick_limit,
+            glyph_style,
         }
     }
 
@@ -210,6 +213,7 @@ impl GeneralState {
         config_file.set_config_bool("Miscellaneous", "PlayIntro", self.play_intro);
         config_file.set_config_bool("Miscellaneous", "ILMode", self.il_mode);
         config_file.set_config_bool("Miscellaneous", "NoTrickLimit", self.disable_trick_limit);
+        config_file.set_config_int("Miscellaneous", "ButtonGlyphStyle", self.glyph_style as i32);
     }
 }
 
@@ -232,6 +236,7 @@ impl Default for GeneralState {
             play_intro: true,
             il_mode: false,
             disable_trick_limit: false,
+            glyph_style: 0,
         }
     }
 }
@@ -424,7 +429,7 @@ pub fn general_page(width: u32, height: u32, resolution_list: Vec<String>) -> Co
                             checkbox_state.checked = app_state.general_state.play_intro;
                         })
                         .into(),
-                    checkbox("IL Mode*".to_string())
+                    checkbox("Career IL Practice Mode".to_string())
                         .on_toggle(|app_state: &mut AppState, checked| {
                             app_state.general_state.il_mode = checked;
                         })
@@ -432,7 +437,7 @@ pub fn general_page(width: u32, height: u32, resolution_list: Vec<String>) -> Co
                             checkbox_state.checked = app_state.general_state.il_mode;
                         })
                         .into(),
-                    checkbox("Disable Trick Limit**".to_string())
+                    checkbox("Disable x251 Combo Limit".to_string())
                         .on_toggle(|app_state: &mut AppState, checked| {
                             app_state.general_state.disable_trick_limit = checked;
                         })
@@ -440,17 +445,31 @@ pub fn general_page(width: u32, height: u32, resolution_list: Vec<String>) -> Co
                             checkbox_state.checked = app_state.general_state.disable_trick_limit;
                         })
                         .into(),
-                    text("*For speedrun practice.\nResets goals when a retrying\nfor practicing a single level\n".to_string())
-                        .height(Size::Exact(50))
-                        //.width(Size::Fill) // breaks the text entirely for unknown reasons
-                        .into(),
-                    text("**For scoring. Removes the\ncap at 251x combo.".to_string())
-                        .height(Size::Exact(32))
-                        .width(Size::Fill)
-                        .into(),
+                        horizontal(vec![
+                            text("Button Glyphs:".to_string())
+                                .v_position(VerticalOffset::AlignTop(2))
+                                .height(Size::Exact(16))
+                                .width(Size::Exact(96))
+                                .into(),
+                            dropdown(vec![
+                                "PC".to_string(),
+                                "PS2".to_string(),
+                                "PS2(JP)".to_string(),
+                                "Xbox".to_string(),
+                            ])
+                                .on_select(move |app_state: &mut AppState, selected| {
+                                    app_state.general_state.glyph_style = selected;
+                                })
+                                .state_hook(move |app_state: &AppState, dropdown_state| {
+                                    dropdown_state.selected = app_state.general_state.glyph_style;
+                                })
+                                .width(Size::Exact(64))
+                                .height(Size::Exact(20))
+                            .into(),
+                        ]).into(),
                 ])
                 .v_position(VerticalOffset::AlignTop(4))
-                .spacing(4)
+                .spacing(8)
                 .into(),
             )
             .width(Size::Exact(width / 2))

@@ -6,6 +6,7 @@ mod event;
 mod file;
 mod gameplay;
 mod gfx;
+mod glyph;
 mod ilmode;
 mod input;
 mod logger;
@@ -51,6 +52,7 @@ fn init_patch() {
     gfx::init();
     ilmode::init();
     gameplay::init();
+    glyph::init();
 }
 
 extern "C" fn init_and_get_version() -> u32 {
