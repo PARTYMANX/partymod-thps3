@@ -1,0 +1,3 @@
+./unmodified/AP.tdx
+./modified/AP.tdx
+ap_dt_marble04_sm_32.png M 0.90

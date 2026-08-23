@@ -1,0 +1,7 @@
+./unmodified/sub.tdx
+./modified/sub.tdx
+cw_sub_table_shadow.png M 0.25
+cw_sub_bbq_shadow.png M 0.25
+SUB_AS_rich_fence_dirt_01.png M 0.25
+cw_sub_reflection01.png M 0.25
+cw_sub_reflection02.png M 0.25

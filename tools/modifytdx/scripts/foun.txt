@@ -1,0 +1,9 @@
+./unmodified/Foun.tdx
+./modified/Foun.tdx
+Foun_CG_QP_Reflect_01.png M 0.25
+Foun_CG_Lamp_02_reflect.png M 0.25
+Foun_CG_CoolingVat_water_01c_32.png M 0.25
+Foun_CG_CoolingVat_water_ripple_32.png M 0.25
+Foun_CG_WindowPane_reflect_01.png M 0.5
+Foun_CG_Cannister_reflect_01.png M 0.25
+Foun_CG_Cannister_reflect_01_32.png M 0.25

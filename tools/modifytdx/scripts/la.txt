@@ -1,0 +1,4 @@
+./unmodified/LA.tdx
+./modified/LA.tdx
+la_dt_treeshad2000_32.png M 0.5
+la_dt_treeshad56_sm_32.png M 0.25

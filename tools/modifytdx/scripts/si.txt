@@ -1,0 +1,6 @@
+./unmodified/SI.tdx
+./modified/SI.tdx
+cw_si_sea_01_32.png M 0.75
+si_hj_SeaBlend02.png M 0.75
+si_dt_reflection01_32.png M 0.25
+SI_HJ_chipPaint1_32.png M 0.25

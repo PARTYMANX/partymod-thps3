@@ -32,10 +32,10 @@ pub fn init() {
         ".\\data\\levels\\ap\\ap.bsp",
         include_bytes!("patches/ap.bps"),
     );
-    file::register_patch(
+    /*file::register_patch(
         ".\\data\\levels\\burn\\burn.bsp",
         include_bytes!("patches/burn.bps"),
-    );
+    );*/
     file::register_patch(
         ".\\data\\levels\\can\\can.bsp",
         include_bytes!("patches/can.bps"),
@@ -52,10 +52,10 @@ pub fn init() {
         ".\\data\\levels\\rio\\rio.bsp",
         include_bytes!("patches/rio.bps"),
     );
-    file::register_patch(
+    /*file::register_patch(
         ".\\data\\levels\\ros\\ros.bsp",
         include_bytes!("patches/ros.bps"),
-    );
+    );*/
     file::register_patch(
         ".\\data\\levels\\shp\\shp.bsp",
         include_bytes!("patches/shp.bps"),
@@ -64,7 +64,7 @@ pub fn init() {
         ".\\data\\levels\\si\\si.bsp",
         include_bytes!("patches/si.bps"),
     );
-    file::register_patch(
+    /*file::register_patch(
         ".\\data\\levels\\sk3ed_bch\\sk3ed_bch.bsp",
         include_bytes!("patches/sk3ed_bch.bps"),
     );
@@ -75,7 +75,7 @@ pub fn init() {
     file::register_patch(
         ".\\data\\levels\\sk3ed_schl\\sk3ed_schl.bsp",
         include_bytes!("patches/sk3ed_schl.bps"),
-    );
+    );*/
     file::register_patch(
         ".\\data\\levels\\skateshop\\skateshop.bsp",
         include_bytes!("patches/skateshop.bps"),
@@ -92,9 +92,39 @@ pub fn init() {
         ".\\data\\levels\\tut\\tut.bsp",
         include_bytes!("patches/tut.bps"),
     );
-    file::register_patch(
+    /*file::register_patch(
         ".\\data\\levels\\ware\\ware.bsp",
         include_bytes!("patches/ware.bps"),
+    );*/
+
+    // texture dictionary patches to reintroduce transparency
+    // not confident they're right due to some inaccuracies
+    // SI shine notably isn't quite right and suburbia wall dirt is maybe off
+    // also airport scanline effect doesn't animate/is broken so it's hidden fully
+
+    file::register_patch(
+        ".\\data\\levels\\foun\\foun.tdx",
+        include_bytes!("patches/fountdx.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\rio\\rio.tdx",
+        include_bytes!("patches/riotdx.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\sub\\sub.tdx",
+        include_bytes!("patches/subtdx.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\ap\\ap.tdx",
+        include_bytes!("patches/aptdx.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\si\\si.tdx",
+        include_bytes!("patches/sitdx.bps"),
+    );
+    file::register_patch(
+        ".\\data\\levels\\la\\la.tdx",
+        include_bytes!("patches/latdx.bps"),
     );
 
     // alt patches that remove pseudo-env map flags from materials
@@ -560,6 +590,16 @@ unsafe fn patch_draw_side() {
 
         //patch::patch_u32((0x0040152a + 2) as *mut (), (&raw const F_1_OVER_512) as *const () as u32);
         //patch::patch_u32((0x004013b6 + 2) as *mut (), (&raw const F_1_OVER_512) as *const () as u32);
+
+        //patch::patch_byte((0x004f46c4 + 1) as *mut (), 6);
+
+        // fix blend dst factor for suburbia fence dirt and SI outdoor ramps
+        // src alpha -> 1 - src alpha
+        patch::patch_byte((0x004f4605 + 1) as *mut (), 6);
+
+        // fix blend op for airport screens
+        // subtract -> add
+        patch::patch_byte((0x004f451c + 1) as *mut (), 1);
     }
 }
 
