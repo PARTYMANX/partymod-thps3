@@ -49,7 +49,7 @@ enum PatchableFile {
 
 impl PatchableFile {
     fn open(path: &Path, opts: OpenOptions) -> Option<Box<Self>> {
-        println!("OPENING FILE {}!", path.to_string_lossy());
+        //println!("OPENING FILE {}!", path.to_string_lossy());
 
         let mut f = match opts.open(path) {
             Ok(v) => v,

@@ -167,6 +167,14 @@ fn get_shadow_setting() -> bool {
     }
 }
 
+fn get_animating_textures_setting() -> bool {
+    unsafe {
+        let ptr_animating_textures = 0x005b4e78 as *mut bool;
+
+        *ptr_animating_textures
+    }
+}
+
 unsafe fn skater_shadow_render_wrapper(unk: u32) {
     unsafe {
         let orig_skater_shadow_render: extern "C" fn(u32) = std::mem::transmute(0x00529170);
@@ -394,38 +402,6 @@ unsafe extern "C" fn do_draw_side_wrapper(unk: *const ()) -> u32 {
         let orig_func: extern "C" fn(*const ()) -> u32 = std::mem::transmute(0x00526fc0);
         let rw_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x0055ce10);
 
-        // material dump
-
-        let material = *(unk.byte_add(0x54) as *mut *mut ());
-
-        let bytes = material as *mut [u8; 128];
-
-        /*
-        print!("MATERIAL:");
-        for (i, byte) in (*bytes).iter().enumerate() {
-            if i % 4 == 0 {
-                print!(" ");
-            }
-            print!("{:02x}", byte);
-        }
-        */
-
-        /*let texture = *(material as *mut *mut ());
-        if !texture.is_null() {
-            let bytes = (texture.byte_add(0x10)) as *mut [u8; 128];
-            print!(" TEXTURE: ");
-            let name = CStr::from_bytes_until_nul(&*bytes).unwrap();
-            print!("{}", name.to_string_lossy());
-            for (i, byte) in (*bytes).iter().enumerate() {
-                if i % 4 == 0 {
-                    print!(" ");
-                }
-                print!("{:02x}", byte);
-            }
-        }*/
-
-        //print!("\n");
-
         let flag = **(unk.byte_add(0x54) as *const *const u32);
 
         if flag & 1 != 0 {
@@ -438,74 +414,24 @@ unsafe extern "C" fn do_draw_side_wrapper(unk: *const ()) -> u32 {
     }
 }
 
-unsafe extern "C" fn materialdump(sector: *mut (), out: *mut ()) {
+unsafe fn get_texture_name(material: *const ()) -> Option<String> {
+    let mut result = None;
     unsafe {
-        let orig_func: extern "C" fn(*mut (), *mut ()) -> u32 = std::mem::transmute(0x004f9640);
-
-        let material = *((sector as *mut *mut ()).byte_add(8));
-
-        let bytes = material as *mut [u8; 128];
-
-        print!("MATERIAL:");
-        for (i, byte) in (*bytes).iter().enumerate() {
-            if i % 4 == 0 {
-                print!(" ");
-            }
-            print!("{:02x}", byte);
-        }
-
         let texture = *(material as *mut *mut ());
         if !texture.is_null() {
             let bytes = (texture.byte_add(0x10)) as *mut [u8; 128];
-            print!(" TEXTURE: ");
             let name = CStr::from_bytes_until_nul(&*bytes).unwrap();
-            print!("{}", name.to_string_lossy());
-            for (i, byte) in (*bytes).iter().enumerate() {
-                if i % 4 == 0 {
-                    print!(" ");
-                }
-                print!("{:02x}", byte);
-            }
+
+            let n = name.to_string_lossy();
+            result = match n.trim() {
+                "ap_dt_escalator04.png" => Some(n.trim().to_string()),
+                "ap_dt_refresh01_32.png" => Some(n.trim().to_string()),
+                "ap_dt_refresh02_32.png" => Some(n.trim().to_string()),
+                _ => Some(n.trim().to_string()),
+            };
         }
 
-        print!("\n");
-
-        orig_func(sector, out);
-
-        /*if (*bytes)[0x1a] & 0x20 != 0 {
-            (*bytes)[0x1a] &= !0x20;
-        }*/
-    }
-}
-
-unsafe extern "C" fn texturedump(material: *mut ()) {
-    unsafe {
-        let orig_func: extern "C" fn(*mut ()) -> u32 = std::mem::transmute(0x004f4320);
-
-        if material.is_null() || (*(material as *mut *mut ())).is_null() {
-            orig_func(material);
-            return;
-        }
-
-        let texture = *((*(material as *mut *mut ())) as *mut *mut ());
-        if !texture.is_null() {
-            let name_bytes = (texture.byte_add(0x10)) as *mut [u8; 128];
-            print!(" TEXTURE: ");
-            let name = CStr::from_bytes_until_nul(&*name_bytes).unwrap();
-            print!("{}", name.to_string_lossy());
-
-            let bytes = texture as *mut [u8; 128];
-            for (i, byte) in (*bytes).iter().enumerate() {
-                if i % 4 == 0 {
-                    print!(" ");
-                }
-                print!("{:02x}", byte);
-            }
-
-            print!("\n");
-        }
-
-        orig_func(material);
+        result
     }
 }
 
@@ -600,6 +526,56 @@ unsafe fn patch_draw_side() {
         // fix blend op for airport screens
         // subtract -> add
         patch::patch_byte((0x004f451c + 1) as *mut (), 1);
+
+        // wibble stuff
+        //patch::patch_nop(0x00401756 as *mut (), 2);
+        //patch::patch_nop(0x00401694 as *mut (), 2);
+        // 00526a67 -> 004011c0
+        // 00534c1d - checks if verts should be recalculated
+
+        // fix wibbled (scrolling) textures
+        patch::patch_u32(
+            (0x004010d2 + 1) as *mut (),
+            instance_verts_wrapper as *const () as u32,
+        );
+    }
+}
+
+// called at 00526a67
+extern "C" fn instance_verts_wrapper(unk1: *const (), unk2: *const (), unk3: bool) -> bool {
+    unsafe {
+        let orig_func: extern "C" fn(*const (), *const (), bool) -> bool =
+            std::mem::transmute(0x004011c0);
+
+        let result = orig_func(unk1, unk2, unk3);
+
+        // make sure these vertices get recalculated if the material is animated
+        /*let material = *(unk2.byte_add(0x10) as *const *const ());
+        let material_flags = *(material.byte_add(0x1a) as *const u8);
+
+        if material_flags & 0x20 != 0 {
+            let name_result = get_texture_name(material);
+            if let Some(name) = name_result {
+                println!("ANIMATED TEXTURE: {}", name);
+            }
+
+            let p_vert_flags = *(unk1.byte_add(0x54) as *const *mut u32);
+
+            *p_vert_flags = *p_vert_flags | 0x200;
+        }*/
+
+        // materials seem to lose and regain their animated flag sometimes?
+        // just reset the flag that says this sector was processed.
+        // there may be a performance penalty for reprocessing all of these
+        // every frame.
+        // A proper fix would be to fix the check at 00534c1d
+        if get_animating_textures_setting() {
+            let p_vert_flags = *(unk1.byte_add(0x54) as *const *mut u32);
+
+            *p_vert_flags = *p_vert_flags | 0x200;
+        }
+
+        result
     }
 }
 
@@ -712,9 +688,6 @@ unsafe fn patch_presentation_mode() {
         patch::patch_call(0x0054e433 as *mut (), create_d3d8_wrapper as *const ());
     }
 }
-
-static F_ZERO: f32 = 0.0;
-static F_1_OVER_512: f32 = 1.0 / 512.0;
 
 pub unsafe fn patch() {
     unsafe {

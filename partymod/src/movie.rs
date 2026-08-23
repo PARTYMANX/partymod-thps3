@@ -895,16 +895,18 @@ fn set_miles_master_volume(volume: i8) -> i8 {
     unsafe {
         let get_miles_manager: unsafe extern "C" fn(bool) -> *const std::ffi::c_void =
             std::mem::transmute(0x00402f80);
-        let release_miles_manager: unsafe extern "C" fn() =
-            std::mem::transmute(0x00402fd0);
+        let release_miles_manager: unsafe extern "C" fn() = std::mem::transmute(0x00402fd0);
 
-        let miles_get_master_volume = 0x0058d3ac as *const extern "stdcall" fn(*const std::ffi::c_void) -> i8;
-        let miles_set_master_volume = 0x0058d378 as *const extern "stdcall" fn(*const std::ffi::c_void, i8);
+        let miles_get_master_volume =
+            0x0058d3ac as *const extern "stdcall" fn(*const std::ffi::c_void) -> i8;
+        let miles_set_master_volume =
+            0x0058d378 as *const extern "stdcall" fn(*const std::ffi::c_void, i8);
 
         let miles_manager = get_miles_manager(false);
 
         if !miles_manager.is_null() {
-            master_volume = (*miles_get_master_volume)(*(miles_manager as *const *const std::ffi::c_void));
+            master_volume =
+                (*miles_get_master_volume)(*(miles_manager as *const *const std::ffi::c_void));
 
             (*miles_set_master_volume)(*(miles_manager as *const *const std::ffi::c_void), volume);
 

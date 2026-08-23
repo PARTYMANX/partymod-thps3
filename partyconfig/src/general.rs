@@ -159,7 +159,8 @@ impl GeneralState {
 
         let play_intro = config_file.get_config_bool("Miscellaneous", "PlayIntro", true);
         let il_mode = config_file.get_config_bool("Miscellaneous", "ILMode", false);
-        let disable_trick_limit = config_file.get_config_bool("Miscellaneous", "NoTrickLimit", false);
+        let disable_trick_limit =
+            config_file.get_config_bool("Miscellaneous", "NoTrickLimit", false);
         let glyph_style = config_file.get_config_int("Miscellaneous", "ButtonGlyphStyle", 0) as u32;
 
         Self {
@@ -445,28 +446,29 @@ pub fn general_page(width: u32, height: u32, resolution_list: Vec<String>) -> Co
                             checkbox_state.checked = app_state.general_state.disable_trick_limit;
                         })
                         .into(),
-                        horizontal(vec![
-                            text("Button Glyphs:".to_string())
-                                .v_position(VerticalOffset::AlignTop(2))
-                                .height(Size::Exact(16))
-                                .width(Size::Exact(96))
-                                .into(),
-                            dropdown(vec![
-                                "PC".to_string(),
-                                "PS2".to_string(),
-                                "PS2(JP)".to_string(),
-                                "Xbox".to_string(),
-                            ])
-                                .on_select(move |app_state: &mut AppState, selected| {
-                                    app_state.general_state.glyph_style = selected;
-                                })
-                                .state_hook(move |app_state: &AppState, dropdown_state| {
-                                    dropdown_state.selected = app_state.general_state.glyph_style;
-                                })
-                                .width(Size::Exact(64))
-                                .height(Size::Exact(20))
+                    horizontal(vec![
+                        text("Button Glyphs:".to_string())
+                            .v_position(VerticalOffset::AlignTop(2))
+                            .height(Size::Exact(16))
+                            .width(Size::Exact(96))
                             .into(),
-                        ]).into(),
+                        dropdown(vec![
+                            "PC".to_string(),
+                            "PS2".to_string(),
+                            "PS2(JP)".to_string(),
+                            "Xbox".to_string(),
+                        ])
+                        .on_select(move |app_state: &mut AppState, selected| {
+                            app_state.general_state.glyph_style = selected;
+                        })
+                        .state_hook(move |app_state: &AppState, dropdown_state| {
+                            dropdown_state.selected = app_state.general_state.glyph_style;
+                        })
+                        .width(Size::Exact(64))
+                        .height(Size::Exact(20))
+                        .into(),
+                    ])
+                    .into(),
                 ])
                 .v_position(VerticalOffset::AlignTop(4))
                 .spacing(8)

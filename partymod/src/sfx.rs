@@ -4,10 +4,10 @@ pub fn get_master_volume() -> f64 {
     unsafe {
         let get_miles_manager: unsafe extern "C" fn(bool) -> *const std::ffi::c_void =
             std::mem::transmute(0x00402f80);
-        let release_miles_manager: unsafe extern "thiscall" fn() =
-            std::mem::transmute(0x00402fd0);
+        let release_miles_manager: unsafe extern "thiscall" fn() = std::mem::transmute(0x00402fd0);
 
-        let miles_get_master_volume = 0x0058d3ac as *const extern "stdcall" fn(*const std::ffi::c_void) -> i8;
+        let miles_get_master_volume =
+            0x0058d3ac as *const extern "stdcall" fn(*const std::ffi::c_void) -> i8;
 
         let miles_manager = get_miles_manager(false);
 
@@ -17,7 +17,8 @@ pub fn get_master_volume() -> f64 {
             // if the volume is 0, that may mean it's just uninitialized
             // get the volume directly from miles sound system
             if result == 0 {
-                result = (*miles_get_master_volume)(*(miles_manager as *const *const std::ffi::c_void));
+                result =
+                    (*miles_get_master_volume)(*(miles_manager as *const *const std::ffi::c_void));
             }
 
             release_miles_manager();
@@ -33,8 +34,7 @@ pub fn get_sound_volume() -> f64 {
     unsafe {
         let get_miles_manager: unsafe extern "C" fn(bool) -> *const std::ffi::c_void =
             std::mem::transmute(0x00402f80);
-        let release_miles_manager: unsafe extern "C" fn() =
-            std::mem::transmute(0x00402fd0);
+        let release_miles_manager: unsafe extern "C" fn() = std::mem::transmute(0x00402fd0);
 
         let miles_manager = get_miles_manager(false);
 

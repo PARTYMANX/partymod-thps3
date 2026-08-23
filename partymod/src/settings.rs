@@ -10,7 +10,7 @@ extern "C" fn init_settings() {
     unsafe {
         let ptr_high_bandwidth = 0x005b4e75 as *mut bool;
         let ptr_play_intro = 0x005b4e79 as *mut bool;
-        
+
         *ptr_high_bandwidth = true;
         *ptr_play_intro = config::get_bool("Miscellaneous", "PlayIntro", true);
     }
