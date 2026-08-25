@@ -4,6 +4,8 @@ use sdl3::{
     sys::{keyboard::SDL_GetKeyFromScancode, keycode::SDL_Keymod},
 };
 
+use crate::input::toggle_panel;
+
 pub struct Keyboard {
     keys_down: Vec<u8>,
 }
@@ -103,6 +105,10 @@ impl Keyboard {
             }
             Scancode::F4 => {
                 self.push_key_down(31);
+            }
+            Scancode::F11 => {
+                // fun one, toggle the hud for screenshots
+                toggle_panel();
             }
             _ => {
                 // use sys function here, the safe function is not sufficient

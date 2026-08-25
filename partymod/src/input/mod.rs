@@ -25,6 +25,7 @@ pub struct InputContext {
     is_using_keyboard: bool,
     is_cursor_visible: bool,
     network_menu_exit_debounce: bool, // for exiting network menus on gamepad
+    is_panel_visible: bool,
 
     is_playing_movie: bool,
 }
@@ -53,6 +54,7 @@ fn init_context() {
             is_using_keyboard: true,
             is_cursor_visible: true,
             network_menu_exit_debounce: false,
+            is_panel_visible: true,
 
             is_playing_movie: false,
         });
@@ -436,6 +438,40 @@ pub fn poll_movie_break_buttons() -> bool {
             .keybind_manager
             .poll_menu_binding("Back", &keyboard_state)
         | keyboard_state.is_scancode_pressed(Scancode::Space)
+}
+
+fn toggle_panel() {
+    let inp_ctx = unsafe {
+        match &mut *INPUT_CONTEXT.get() {
+            Some(v) => v,
+            None => panic!("Tried to get uninitialized input context!"),
+        }
+    };
+
+    inp_ctx.is_panel_visible = !inp_ctx.is_panel_visible;
+
+    unsafe {
+        let get_panel_manager: unsafe extern "C" fn(bool) -> *const () =
+            std::mem::transmute(0x0045a290 as *const ());
+        let release_panel_manager: unsafe extern "thiscall" fn(*const ()) =
+            std::mem::transmute(0x0045a2e0 as *const ());
+
+        let toggle_panel: unsafe extern "thiscall" fn(*const (), bool, bool) =
+            std::mem::transmute(0x0045ae80 as *const ());
+
+        let panel_manager = get_panel_manager(false);
+
+        let is_visible = inp_ctx.is_panel_visible;
+        toggle_panel(panel_manager, is_visible, is_visible);
+
+        if is_visible {
+            logger::log(LogLevel::Info, "HUD enabled");
+        } else {
+            logger::log(LogLevel::Info, "HUD disabled");
+        }
+
+        release_panel_manager(panel_manager);
+    }
 }
 
 pub unsafe extern "C" fn viewer_shift_logic_code_wrapper(viewer: *mut ()) {

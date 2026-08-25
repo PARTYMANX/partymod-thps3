@@ -428,6 +428,10 @@ impl Device {
                 .gamepad_manager
                 .poll_button_binding(player, "Grind")
                 .0
+                && !inp_ctx
+                    .gamepad_manager
+                    .poll_button_binding(player, "Pause")
+                    .0
             {
                 inp_ctx.network_menu_exit_debounce = false;
             }
@@ -476,6 +480,7 @@ impl Device {
 
         if inp_ctx.network_menu_exit_debounce {
             self.control_data[3] &= !(0x01 << 4);
+            self.control_data[2] &= !(0x01 << 3);
         }
     }
 
@@ -488,10 +493,18 @@ impl Device {
         };
 
         if inp_ctx.network_menu_exit_debounce {
+            if !inp_ctx.gamepad_manager.poll_button_binding(0, "Grind").0
+                && !inp_ctx.gamepad_manager.poll_button_binding(0, "Pause").0
+            {
+                inp_ctx.network_menu_exit_debounce = false;
+            }
+
             return;
         }
 
-        if inp_ctx.gamepad_manager.poll_button_binding(0, "Grind").0 {
+        if inp_ctx.gamepad_manager.poll_button_binding(0, "Grind").0
+            || inp_ctx.gamepad_manager.poll_button_binding(0, "Pause").0
+        {
             inp_ctx.network_menu_exit_debounce = true;
             inp_ctx.keyboard.push_esc_down();
         }

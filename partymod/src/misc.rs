@@ -42,8 +42,6 @@ unsafe extern "C" fn our_random(out_of: u32) -> u32 {
     value % out_of
 }
 
-// TODO: version display
-
 pub fn init() {
     init_music_prng();
 }
