@@ -32,10 +32,10 @@ pub fn init() {
         ".\\data\\levels\\ap\\ap.bsp",
         include_bytes!("patches/ap.bps"),
     );
-    /*file::register_patch(
+    file::register_patch(
         ".\\data\\levels\\burn\\burn.bsp",
         include_bytes!("patches/burn.bps"),
-    );*/
+    );
     file::register_patch(
         ".\\data\\levels\\can\\can.bsp",
         include_bytes!("patches/can.bps"),
@@ -52,10 +52,10 @@ pub fn init() {
         ".\\data\\levels\\rio\\rio.bsp",
         include_bytes!("patches/rio.bps"),
     );
-    /*file::register_patch(
+    file::register_patch(
         ".\\data\\levels\\ros\\ros.bsp",
         include_bytes!("patches/ros.bps"),
-    );*/
+    );
     file::register_patch(
         ".\\data\\levels\\shp\\shp.bsp",
         include_bytes!("patches/shp.bps"),
@@ -64,18 +64,6 @@ pub fn init() {
         ".\\data\\levels\\si\\si.bsp",
         include_bytes!("patches/si.bps"),
     );
-    /*file::register_patch(
-        ".\\data\\levels\\sk3ed_bch\\sk3ed_bch.bsp",
-        include_bytes!("patches/sk3ed_bch.bps"),
-    );
-    file::register_patch(
-        ".\\data\\levels\\sk3ed_indr\\sk3ed_indr.bsp",
-        include_bytes!("patches/sk3ed_indr.bps"),
-    );
-    file::register_patch(
-        ".\\data\\levels\\sk3ed_schl\\sk3ed_schl.bsp",
-        include_bytes!("patches/sk3ed_schl.bps"),
-    );*/
     file::register_patch(
         ".\\data\\levels\\skateshop\\skateshop.bsp",
         include_bytes!("patches/skateshop.bps"),
@@ -92,16 +80,12 @@ pub fn init() {
         ".\\data\\levels\\tut\\tut.bsp",
         include_bytes!("patches/tut.bps"),
     );
-    /*file::register_patch(
+    file::register_patch(
         ".\\data\\levels\\ware\\ware.bsp",
         include_bytes!("patches/ware.bps"),
-    );*/
+    );
 
-    // texture dictionary patches to reintroduce transparency
-    // not confident they're right due to some inaccuracies
-    // SI shine notably isn't quite right and suburbia wall dirt is maybe off
-    // also airport scanline effect doesn't animate/is broken so it's hidden fully
-
+    // texture dictionary patches to reintroduce and fix transparency for certain textures
     file::register_patch(
         ".\\data\\levels\\foun\\foun.tdx",
         include_bytes!("patches/fountdx.bps"),
@@ -126,13 +110,6 @@ pub fn init() {
         ".\\data\\levels\\la\\la.tdx",
         include_bytes!("patches/latdx.bps"),
     );
-
-    // alt patches that remove pseudo-env map flags from materials
-    // otherwise those materials don't render
-    // TODO: make it so we don't need these
-    //file::register_patch(".\\data\\levels\\la\\la.bsp", include_bytes!("patches/la-noreflect.bps"));
-    //file::register_patch(".\\data\\levels\\shp\\shp.bsp", include_bytes!("patches/shp-noreflect.bps"));
-    //file::register_patch(".\\data\\levels\\si\\si.bsp", include_bytes!("patches/si-noreflect.bps"));
 }
 
 pub fn init_settings() {
@@ -419,84 +396,8 @@ unsafe fn patch_draw_side() {
         patch::patch_call(0x004f4278 as *mut (), do_draw_side_wrapper as *const ());
         patch::patch_call(0x00522192 as *mut (), do_draw_side_wrapper as *const ());
 
-        // all of this stuff was research for the pseudo env map patch lol
-        //patch::patch_jmp(0x00550eec as *mut (), 0x00550f29 as *const ());
-        //patch::patch_nop(0x004f48c5 as *mut (), 2);
-        //patch::patch_nop(0x004f9bff as *mut (), 5);
-        //patch::patch_nop(0x004f498b as *mut (), 2);
-
-        // disables animated textures
-        //patch::patch_byte(0x004010bd as *mut (), 0xeb);
-        //patch::patch_nop(0x004010bd as *mut (), 2);
-
-        // ditto
-        //patch::patch_byte(0x0040114c as *mut (), 0xeb);
-
-        //patch::patch_byte(0x004f964e as *mut (), 0xeb);
-        //patch::patch_byte(0x0040123f as *mut (), 0xeb);
-
-        //patch::patch_nop(0x0040172b as *mut (), 6);
-
-        //patch::patch_byte(0x004f43f7 as *mut (), 0xeb);
-
-        //patch::patch_nop(0x004f964b as *mut (), 15);
-
-        //patch::patch_u32((0x004fa235 + 1) as *mut (), materialdump as u32);
-        //patch::patch_call(0x004f4992 as *mut (), texturedump as *const ());
-        //patch::patch_call(0x004f48cc as *mut (), texturedump as *const ());
-
-        // test if this disables textures
-        //patch::patch_byte(0x004f498f as *mut (), 0xeb);
-
-        // test if this disables rendering
-        //patch::patch_nop(0x004fa244 as *mut (), 5);
-        //patch::patch_byte(0x0055bada as *mut (), 0xeb);
-        //patch::patch_byte(0x0055bb2a as *mut (), 0xeb);
-        //patch::patch_nop(0x0055bb22 as *mut (), 3);
-        //patch::patch_nop(0x0055bb2a as *mut (), 2);
-        //patch::patch_nop(0x0055bb36 as *mut (), 2);
-
-        // reflection goes to 00534be0
-
-        //patch::patch_byte(0x00534c0f as *mut (), 0xeb);
-        //patch::patch_bytes(0x00534bfa as *mut (), &[0xe9, 0x8a, 0x00, 0x00, 0x00]);
-        //patch::patch_byte(0x00534c7a as *mut (), 0xeb);
-
-        // 0x00534c84 -> 0x00526b20 (0xc9, 0xff, 0x05880640, 0x0422e8a0)
-        //patch::patch_jmp(0x00526b5c as *mut (), 0x00526f08 as *const ());
-        //patch::patch_byte(0x00526b79 as *mut (), 0xeb);
-
-        // 0x00526b83 -> 0x004f4b00
-        // 0x004f4b37 is where it's skipped
-
         // don't skip drawing pseudo env map materials
         patch::patch_nop(0x004f4b37 as *mut (), 6);
-
-        // blend mode tests maybe fixes
-        //patch::patch_byte((0x004f463f + 1) as *mut (), 0x03);
-
-        // try changing vertex colors
-        /*
-        patch::patch_u32((0x00401319 + 2) as *mut (), 0x0058d3e8);
-        patch::patch_u32((0x0040132b + 2) as *mut (), 0x0058d3e8);
-        patch::patch_u32((0x0040133e + 2) as *mut (), 0x0058d3e8);
-
-        patch::patch_u32((0x00534ed9 + 2) as *mut (), 0x0058d3e8);
-        patch::patch_u32((0x00534eeb + 2) as *mut (), 0x0058d3e8);
-        patch::patch_u32((0x00534efe + 2) as *mut (), 0x0058d3e8);
-        */
-
-        /*
-        patch::patch_u32((0x004013b6 + 2) as *mut (), 0x0058d3ec);
-        patch::patch_u32((0x004013d0 + 2) as *mut (), 0x0058d3ec);
-        patch::patch_u32((0x004013e1 + 2) as *mut (), 0x0058d3ec);
-        patch::patch_u32((0x004013f4 + 2) as *mut (), 0x0058d3ec);
-        */
-
-        //patch::patch_u32((0x0040152a + 2) as *mut (), (&raw const F_1_OVER_512) as *const () as u32);
-        //patch::patch_u32((0x004013b6 + 2) as *mut (), (&raw const F_1_OVER_512) as *const () as u32);
-
-        //patch::patch_byte((0x004f46c4 + 1) as *mut (), 6);
 
         // fix blend dst factor for suburbia fence dirt and SI outdoor ramps
         // src alpha -> 1 - src alpha
@@ -505,12 +406,6 @@ unsafe fn patch_draw_side() {
         // fix blend op for airport screens
         // subtract -> add
         patch::patch_byte((0x004f451c + 1) as *mut (), 1);
-
-        // wibble stuff
-        //patch::patch_nop(0x00401756 as *mut (), 2);
-        //patch::patch_nop(0x00401694 as *mut (), 2);
-        // 00526a67 -> 004011c0
-        // 00534c1d - checks if verts should be recalculated
 
         patch_wibble_fix();
     }
