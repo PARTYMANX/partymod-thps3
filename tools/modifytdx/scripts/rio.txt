@@ -4,3 +4,4 @@ Rio_CG_Int_Decal_Planter_01_32.png M 0.25
 Rio_CG_Int_Decal_Planter_02_32.png M 0.25
 Rio_CG_Int_Decal_Planter_03_32.png M 0.25
 Rio_CG_Int_Decal_WaxStreak_01.png M 0.25
+Rio_CG_ES_Bldg01_dirt_02.png M 0.25

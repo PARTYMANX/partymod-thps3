@@ -414,27 +414,6 @@ unsafe extern "C" fn do_draw_side_wrapper(unk: *const ()) -> u32 {
     }
 }
 
-unsafe fn get_texture_name(material: *const ()) -> Option<String> {
-    let mut result = None;
-    unsafe {
-        let texture = *(material as *mut *mut ());
-        if !texture.is_null() {
-            let bytes = (texture.byte_add(0x10)) as *mut [u8; 128];
-            let name = CStr::from_bytes_until_nul(&*bytes).unwrap();
-
-            let n = name.to_string_lossy();
-            result = match n.trim() {
-                "ap_dt_escalator04.png" => Some(n.trim().to_string()),
-                "ap_dt_refresh01_32.png" => Some(n.trim().to_string()),
-                "ap_dt_refresh02_32.png" => Some(n.trim().to_string()),
-                _ => Some(n.trim().to_string()),
-            };
-        }
-
-        result
-    }
-}
-
 unsafe fn patch_draw_side() {
     unsafe {
         patch::patch_call(0x004f4278 as *mut (), do_draw_side_wrapper as *const ());
@@ -533,46 +512,89 @@ unsafe fn patch_draw_side() {
         // 00526a67 -> 004011c0
         // 00534c1d - checks if verts should be recalculated
 
-        // fix wibbled (scrolling) textures
-        patch::patch_u32(
-            (0x004010d2 + 1) as *mut (),
-            instance_verts_wrapper as *const () as u32,
-        );
+        patch_wibble_fix();
     }
 }
 
-// called at 00526a67
-extern "C" fn instance_verts_wrapper(unk1: *const (), unk2: *const (), unk3: bool) -> bool {
+unsafe fn patch_wibble_fix() {
     unsafe {
-        let orig_func: extern "C" fn(*const (), *const (), bool) -> bool =
-            std::mem::transmute(0x004011c0);
+        // fixes "wibbling" (UV/vertex color animation) by changing a conditional
+        // in the vertex processing code
+        patch::patch_nop(0x00534c0a as *mut (), 22);
+        // 67 ff f7 - PUSH EDI
+        patch::patch_bytes(0x00534c0a as *mut (), &[0x67, 0xff, 0xf7]);
+        patch::patch_call(
+            (0x00534c0a + 3) as *mut (),
+            instance_verts_condition as *const (),
+        );
+        // 83 c4 04 - ADD ESP, 0x04
+        patch::patch_bytes((0x00534c0a + 8) as *mut (), &[0x83, 0xc4, 0x04]);
+        // 8b 77 1c - MOV [EDI + 0x1c]
+        patch::patch_bytes((0x00534c0a + 11) as *mut (), &[0x8b, 0x77, 0x1c]);
+        // 85 c0 - TEST EAX,EAX
+        patch::patch_bytes((0x00534c0a + 14) as *mut (), &[0x85, 0xc0]);
+    }
+}
 
-        let result = orig_func(unk1, unk2, unk3);
+extern "C" fn instance_verts_condition(unk: *const ()) -> bool {
+    unsafe {
+        let p_instance_flags = *(unk.byte_add(0x54) as *const *mut u32);
+        let instance_material_maybe = *(unk.byte_add(0x1c) as *const *const ());
 
-        // make sure these vertices get recalculated if the material is animated
-        /*let material = *(unk2.byte_add(0x10) as *const *const ());
-        let material_flags = *(material.byte_add(0x1a) as *const u8);
+        if instance_material_maybe.is_null() {
+            return false;
+        }
 
-        if material_flags & 0x20 != 0 {
-            let name_result = get_texture_name(material);
-            if let Some(name) = name_result {
-                println!("ANIMATED TEXTURE: {}", name);
-            }
+        let instance_material_unk = *(instance_material_maybe.byte_add(0x18) as *const u16);
+        let instance_unk = *(p_instance_flags.byte_add(6) as *const u16);
+        let instance_flags = *p_instance_flags;
 
-            let p_vert_flags = *(unk1.byte_add(0x54) as *const *mut u32);
-
-            *p_vert_flags = *p_vert_flags | 0x200;
-        }*/
-
-        // materials seem to lose and regain their animated flag sometimes?
-        // just reset the flag that says this sector was processed.
-        // there may be a performance penalty for reprocessing all of these
-        // every frame.
-        // A proper fix would be to fix the check at 00534c1d
+        // detect animated textures
         if get_animating_textures_setting() {
-            let p_vert_flags = *(unk1.byte_add(0x54) as *const *mut u32);
+            for i in 0..*(p_instance_flags.byte_add(0x4) as *const u16) as usize {
+                let offset = 0x10 + (0xc * i) + 0x8;
+                let material = *(p_instance_flags.byte_add(offset) as *const *const ());
 
-            *p_vert_flags = *p_vert_flags | 0x200;
+                let material_flags = *(material.byte_add(0x1a) as *const u8);
+
+                if material_flags & 0x20 != 0 {
+                    // found UV wibbling flag
+                    return true;
+                }
+
+                if material_flags & 0x40 != 0 && detect_vc_wibble_texture(material) {
+                    // all VC wibble meshes i've found use 0x40, so that can
+                    // prevent some string comparisons
+                    return true;
+                }
+            }
+        }
+
+        if instance_material_unk == instance_unk && instance_flags & 0x200 == 0 {
+            return false;
+        }
+
+        true
+    }
+}
+
+unsafe fn detect_vc_wibble_texture(material: *const ()) -> bool {
+    // despite my best efforts, I cannot find the VC wibble flag, so we're
+    // using hardcoded texture names
+
+    let mut result = false;
+    unsafe {
+        let texture = *(material as *mut *mut ());
+        if !texture.is_null() {
+            let bytes = (texture.byte_add(0x10)) as *mut [u8; 128];
+            let name = CStr::from_bytes_until_nul(&*bytes).unwrap();
+
+            let n = name.to_string_lossy();
+            result = match n.trim() {
+                "cw_Sub_Curtain.png" => true,       // suburbia tv house curtain
+                "Can_cw_Logcab_inside.png" => true, // canada cabin interior
+                _ => false,
+            };
         }
 
         result
