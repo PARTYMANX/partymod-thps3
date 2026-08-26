@@ -26,4 +26,4 @@ features = [
 ]
 
 [build-dependencies]
-winres = "0.1.12"
+embed-resource = "3.0"
