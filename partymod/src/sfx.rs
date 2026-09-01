@@ -62,16 +62,109 @@ unsafe fn patch_sound_cleanup() {
     }
 }
 
-unsafe fn patch_volume_fix() {
+unsafe extern "C" fn get_bgm_status() -> u32 {
+    // if still playing, return 2. if done playing, return 1
     unsafe {
-        patch::patch_f32(0x0058d5f4 as *mut (), 0.00025);
-        patch::patch_byte(0x00408b8f as *mut (), 0xeb); // sets all samples to volume??? bad
+        let miles_stream_status =
+            0x0058d390 as *const extern "stdcall" fn(*const ()) -> u32;
+        let close_bgm_stream: unsafe extern "C" fn(u32) = std::mem::transmute(0x00407c30);
+
+        let bgm_stream = *(0x005d0b78 as *const *const ());
+
+        if !bgm_stream.is_null() {
+            let status = (*miles_stream_status)(bgm_stream);
+
+            match status {
+                // playing
+                4 => 2,
+                // paused
+                8 => 2,
+                // anything else. likely stopped (2)
+                _ => {
+                    close_bgm_stream(0);
+
+                    1
+                },
+            }
+        } else {
+            1
+        }
+    }
+}
+
+unsafe fn patch_bgm_pause() {
+    unsafe {
+        patch::patch_jmp(0x00407d40 as *mut (), get_bgm_status as *const ());
+    }
+}
+
+unsafe extern "C" fn set_stream_pan(left_percentage: f32, right_percentage: f32, stream_idx: u32) {
+    unsafe {
+        let miles_set_stream_pan = 0x0058d398 as *const extern "stdcall" fn(*const (), u32);
+        let miles_set_stream_volume = 0x0058d3c4 as *const extern "stdcall" fn(*const (), u32);
+
+        let stream = *((0x005d0b88 as *const *const ()).byte_add(stream_idx as usize * 12));
+
+        let scale_f32 = f32::max(left_percentage, right_percentage);
+        let left_f32 = left_percentage / scale_f32;
+        let right_f32 = right_percentage / scale_f32;
+
+        let scale = (scale_f32 / 100.0) * 127.0;
+        let vol = (get_sound_volume() as f32 * scale) as u32;
+
+        let pan_rightness = ((right_f32 - left_f32) + 1.0) * 0.5;
+        let pan = (pan_rightness * 127.0) as u32;
+
+        (*miles_set_stream_volume)(stream, vol);
+        (*miles_set_stream_pan)(stream, pan);
+    }
+}
+
+unsafe fn patch_stream_volume() {
+    unsafe {
+        patch::patch_jmp(0x00407ea0 as *mut (), set_stream_pan as *const ());
+    }
+}
+
+unsafe extern "C" fn set_sample_parameters(sample_idx:u32, left_percentage: f32, right_percentage: f32, rate: f32) {
+    unsafe {
+        let miles_set_sample_pan = 0x0058d3b4 as *const extern "stdcall" fn(*const (), u32);
+        let miles_set_sample_volume = 0x0058d354 as *const extern "stdcall" fn(*const (), u32);
+        let miles_set_sample_playback_rate = 0x0058d3b0 as *const extern "stdcall" fn(*const (), u32);
+
+        let sample = *((0x00850cd0 as *const *const ()).byte_add(sample_idx as usize * 8));
+
+        let scale_f32 = f32::max(left_percentage, right_percentage);
+        let left_f32 = left_percentage / scale_f32;
+        let right_f32 = right_percentage / scale_f32;
+
+        let scale = (scale_f32 / 100.0) * 127.0;
+        let vol = (get_sound_volume() as f32 * scale) as u32;
+
+        let pan_rightness = ((right_f32 - left_f32) + 1.0) * 0.5;
+        let pan = (pan_rightness * 127.0) as u32;
+
+        let orig_sample_rate = *((0x00850cd0 as *const u32).byte_add(4 + (sample_idx as usize * 8)));
+        let rate_f32 = ((orig_sample_rate as f32 / 44100.0) * (rate / 100.0)) as f32;
+        let rate = (44100.0 * rate_f32) as u32;
+
+        (*miles_set_sample_volume)(sample, vol);
+        (*miles_set_sample_pan)(sample, pan);
+        (*miles_set_sample_playback_rate)(sample, rate);
+    }
+}
+
+unsafe fn patch_sample_parameters() {
+    unsafe {
+        patch::patch_jmp(0x00408f10 as *mut (), set_sample_parameters as *const ());
     }
 }
 
 pub unsafe fn patch() {
     unsafe {
         patch_sound_cleanup();
-        //patch_volume_fix();
+        patch_bgm_pause();
+        patch_stream_volume();
+        patch_sample_parameters();
     }
 }
