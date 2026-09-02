@@ -65,8 +65,7 @@ unsafe fn patch_sound_cleanup() {
 unsafe extern "C" fn get_bgm_status() -> u32 {
     // if still playing, return 2. if done playing, return 1
     unsafe {
-        let miles_stream_status =
-            0x0058d390 as *const extern "stdcall" fn(*const ()) -> u32;
+        let miles_stream_status = 0x0058d390 as *const extern "stdcall" fn(*const ()) -> u32;
         let close_bgm_stream: unsafe extern "C" fn(u32) = std::mem::transmute(0x00407c30);
 
         let bgm_stream = *(0x005d0b78 as *const *const ());
@@ -84,7 +83,7 @@ unsafe extern "C" fn get_bgm_status() -> u32 {
                     close_bgm_stream(0);
 
                     1
-                },
+                }
             }
         } else {
             1
@@ -126,11 +125,17 @@ unsafe fn patch_stream_volume() {
     }
 }
 
-unsafe extern "C" fn set_sample_parameters(sample_idx:u32, left_percentage: f32, right_percentage: f32, rate: f32) {
+unsafe extern "C" fn set_sample_parameters(
+    sample_idx: u32,
+    left_percentage: f32,
+    right_percentage: f32,
+    rate: f32,
+) {
     unsafe {
         let miles_set_sample_pan = 0x0058d3b4 as *const extern "stdcall" fn(*const (), u32);
         let miles_set_sample_volume = 0x0058d354 as *const extern "stdcall" fn(*const (), u32);
-        let miles_set_sample_playback_rate = 0x0058d3b0 as *const extern "stdcall" fn(*const (), u32);
+        let miles_set_sample_playback_rate =
+            0x0058d3b0 as *const extern "stdcall" fn(*const (), u32);
 
         let sample = *((0x00850cd0 as *const *const ()).byte_add(sample_idx as usize * 8));
 
@@ -144,7 +149,8 @@ unsafe extern "C" fn set_sample_parameters(sample_idx:u32, left_percentage: f32,
         let pan_rightness = ((right_f32 - left_f32) + 1.0) * 0.5;
         let pan = (pan_rightness * 127.0) as u32;
 
-        let orig_sample_rate = *((0x00850cd0 as *const u32).byte_add(4 + (sample_idx as usize * 8)));
+        let orig_sample_rate =
+            *((0x00850cd0 as *const u32).byte_add(4 + (sample_idx as usize * 8)));
         let rate_f32 = ((orig_sample_rate as f32 / 44100.0) * (rate / 100.0)) as f32;
         let rate = (44100.0 * rate_f32) as u32;
 

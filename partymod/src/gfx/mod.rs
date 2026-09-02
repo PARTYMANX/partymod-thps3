@@ -157,6 +157,9 @@ unsafe fn skater_shadow_render_wrapper(unk: u32) {
         let orig_skater_shadow_render: extern "C" fn(u32) = std::mem::transmute(0x00529170);
         let rw_get_render_state: extern "C" fn(u32, *mut i32) = std::mem::transmute(0x0055ce60);
         let rw_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x0055ce10);
+        let rw_d3d8_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x005540b0);
+        let rw_d3d8_get_render_state: extern "C" fn(u32, *mut i32) =
+            std::mem::transmute(0x005540f0);
 
         // going in, depth test/write have already been disabled.
 
@@ -168,19 +171,24 @@ unsafe fn skater_shadow_render_wrapper(unk: u32) {
         rw_get_render_state(20, &mut current_cull_state);
 
         let mut current_src_blend_state = 0;
-        rw_get_render_state(10, &mut current_src_blend_state);
+        rw_d3d8_get_render_state(19, &mut current_src_blend_state);
 
         let mut current_dst_blend_state = 0;
-        rw_get_render_state(11, &mut current_dst_blend_state);
+        rw_d3d8_get_render_state(20, &mut current_dst_blend_state);
+
+        let mut current_blend_op_state = 0;
+        rw_d3d8_get_render_state(171, &mut current_blend_op_state);
 
         // disable alpha blending
         rw_set_render_state(12, 0);
         // draw two-sided
         rw_set_render_state(20, 1);
         // set blend src to src alpha
-        rw_set_render_state(10, 1);
+        rw_d3d8_set_render_state(19, 5);
         // set blend dst to 1 - src alpha
-        rw_set_render_state(11, 1);
+        rw_d3d8_set_render_state(20, 7);
+        // set blend function to add
+        rw_d3d8_set_render_state(171, 1);
 
         // draw the shadow
         orig_skater_shadow_render(unk);
@@ -188,8 +196,9 @@ unsafe fn skater_shadow_render_wrapper(unk: u32) {
         // reset state
         rw_set_render_state(12, current_alpha_state);
         rw_set_render_state(20, current_cull_state);
-        rw_set_render_state(10, current_src_blend_state);
-        rw_set_render_state(11, current_dst_blend_state);
+        rw_d3d8_set_render_state(19, current_src_blend_state);
+        rw_d3d8_set_render_state(20, current_dst_blend_state);
+        rw_d3d8_set_render_state(171, current_blend_op_state);
     }
 }
 
@@ -209,6 +218,12 @@ unsafe fn draw_skater_shadow() {
             std::mem::transmute(0x00561110);
         let rw_get_render_state: extern "C" fn(u32, *mut i32) = std::mem::transmute(0x0055ce60);
         let rw_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x0055ce10);
+        let rw_d3d8_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x005540b0);
+        let rw_d3d8_get_render_state: extern "C" fn(u32, *mut i32) =
+            std::mem::transmute(0x005540f0);
+        let rw_d3d8_set_texture_stage_state: extern "C" fn(u32, u32, i32) =
+            std::mem::transmute(0x00554110);
+        let rw_d3d8_flush_state_cache: extern "C" fn() = std::mem::transmute(0x00553fe0);
 
         let vertex_count = *(0x00930bb8 as *const u32);
         let p_vertices = 0x0090b8c8 as *mut RW3DVertex;
@@ -218,7 +233,9 @@ unsafe fn draw_skater_shadow() {
         let vertices = std::slice::from_raw_parts_mut(p_vertices, vertex_count as usize);
 
         for vertex in vertices {
-            vertex.color = 0x80ffffff;
+            // i'll be honest I was expecting this to work correctly at 50%
+            // but hey this accidentally worked right...
+            vertex.color = 0x20ffffff;
         }
 
         let mut current_alpha_state = 0;
@@ -228,20 +245,10 @@ unsafe fn draw_skater_shadow() {
         rw_get_render_state(9, &mut current_filter_state);
 
         let mut current_src_blend_state = 0;
-        rw_get_render_state(10, &mut current_src_blend_state);
+        rw_d3d8_get_render_state(19, &mut current_src_blend_state);
 
         let mut current_dst_blend_state = 0;
-        rw_get_render_state(11, &mut current_dst_blend_state);
-
-        // load bearing state changes. no idea why these must be here but
-        // if they're not, certain skaters won't have transparent shadows.
-        // i think something is not resetting d3d state so i think this forces
-        // a flush.
-
-        // set blend src to src color
-        rw_set_render_state(10, 3);
-        // set blend dst to dst color
-        rw_set_render_state(11, 9);
+        rw_d3d8_get_render_state(20, &mut current_dst_blend_state);
 
         rw_im_3d_transform(p_vertices, vertex_count, std::ptr::null(), 1);
 
@@ -249,18 +256,42 @@ unsafe fn draw_skater_shadow() {
         rw_set_render_state(12, 1);
         // set filter to linear
         rw_set_render_state(9, 2);
-        // set blend src to src alpha
-        rw_set_render_state(10, 5);
-        // set blend src to 1 - src alpha
-        rw_set_render_state(11, 6);
+        // set blend src to one
+        rw_d3d8_set_render_state(19, 2);
+        // set blend dst to one
+        rw_d3d8_set_render_state(20, 2);
+        // set blend function to reverse subtract
+        rw_d3d8_set_render_state(171, 3);
+
+        // set texture stage state
+        // change texture op to modulate
+        rw_d3d8_set_texture_stage_state(0, 1, 4);
+        // arg 1 -> texture factor (alpha only)
+        rw_d3d8_set_texture_stage_state(0, 2, 0x22);
+        // arg 2 -> diffuse factor (alpha only)
+        rw_d3d8_set_texture_stage_state(0, 3, 0x20);
+
+        rw_d3d8_flush_state_cache();
 
         rw_im_3d_render_indexed_primitive(3, p_indices, vertex_count);
 
         // reset state
         rw_set_render_state(12, current_alpha_state);
         rw_set_render_state(9, current_filter_state);
-        rw_set_render_state(10, current_src_blend_state);
-        rw_set_render_state(11, current_dst_blend_state);
+        rw_d3d8_set_render_state(19, current_src_blend_state);
+        rw_d3d8_set_render_state(20, current_dst_blend_state);
+        // set blend op to add because the UI seems to rely on that
+        rw_d3d8_set_render_state(171, 1);
+
+        // reset texture stage state to the best of our ability
+        // change texture op to modulate
+        rw_d3d8_set_texture_stage_state(0, 1, 4);
+        // arg 1 -> texture factor (alpha only)
+        rw_d3d8_set_texture_stage_state(0, 2, 0x02);
+        // arg 2 -> diffuse factor (alpha only)
+        rw_d3d8_set_texture_stage_state(0, 3, 0x00);
+
+        rw_d3d8_flush_state_cache();
     }
 }
 
@@ -303,11 +334,11 @@ unsafe fn draw_blob_shadow() {
         rw_set_render_state(12, 1);
         // set filter to linear
         rw_set_render_state(9, 2);
-        // set blend src to src alpha
+        // set blend src to zero
         rw_set_render_state(10, 1);
-        // set blend dst to one
+        // set blend dst to inverse src alpha
         rw_set_render_state(11, 6);
-        // set blend dst to one
+        // set correct cull state
         rw_set_render_state(20, 1);
 
         rw_im_3d_transform(p_vertices, vertex_count * 4, std::ptr::null(), 1);

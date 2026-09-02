@@ -54,6 +54,7 @@ impl<T> GenArena<T> {
         }
     }
 
+    #[allow(unused)]
     pub fn free(&mut self, key: GenArenaKey) -> bool {
         if key.index >= self.list.len() {
             return false;
@@ -104,12 +105,14 @@ impl<T> GenArena<T> {
         }
     }
 
+    #[allow(unused)]
     pub fn iter(&self) -> Iter<'_, T> {
         Iter {
             iter: self.list.iter(),
         }
     }
 
+    #[allow(unused)]
     pub fn iter_mut(&mut self) -> IterMut<'_, T> {
         IterMut {
             iter: self.list.iter_mut(),

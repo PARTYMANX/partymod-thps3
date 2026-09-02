@@ -1,4 +1,10 @@
-use std::fmt;
+use std::{
+    fmt,
+    fs::File,
+    io::Write,
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 pub trait Logger: Send + Sync {
     fn log(&self, level: LogLevel, msg: &str);
@@ -62,6 +68,51 @@ impl Logger for PrintlnLogger {
     fn log(&self, level: LogLevel, msg: &str) {
         if level.priority() <= self.level.priority() {
             println!("{} {}", level, msg);
+        }
+    }
+}
+
+pub struct FileLogger {
+    level: LogLevel,
+    file: Mutex<File>,
+}
+
+impl FileLogger {
+    pub fn new(level: LogLevel, file_path: &Path) -> Option<Self> {
+        match File::create(file_path) {
+            Ok(file) => Some(Self {
+                level,
+                file: Mutex::new(file),
+            }),
+            Err(_) => None,
+        }
+    }
+}
+
+impl Logger for FileLogger {
+    fn log(&self, level: LogLevel, msg: &str) {
+        if level.priority() <= self.level.priority() {
+            let mut file = self.file.lock().unwrap();
+
+            let _ = file.write(&format!("{} {}\n", level, msg).as_bytes());
+        }
+    }
+}
+
+pub struct MultiLogger {
+    loggers: Vec<Arc<dyn Logger>>,
+}
+
+impl MultiLogger {
+    pub fn new(loggers: Vec<Arc<dyn Logger>>) -> Self {
+        Self { loggers }
+    }
+}
+
+impl Logger for MultiLogger {
+    fn log(&self, level: LogLevel, msg: &str) {
+        for logger in &self.loggers {
+            logger.log(level, msg);
         }
     }
 }
