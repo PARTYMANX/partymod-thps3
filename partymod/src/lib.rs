@@ -13,6 +13,7 @@ mod logger;
 mod misc;
 mod movie;
 mod net;
+mod profile;
 mod sdl;
 mod settings;
 mod sfx;
@@ -54,6 +55,7 @@ fn init_patch() {
     gameplay::init();
     glyph::init();
     net::init();
+    profile::init();
 }
 
 extern "C" fn init_and_get_version() -> u32 {
@@ -121,6 +123,10 @@ extern "C" fn get_version_number(script: *const std::ffi::c_void) -> u32 {
 
         if ilmode::is_enabled() {
             str = format!("{} - IL MODE ENABLED", str);
+        }
+
+        if let Some(profile_name) = profile::get_profile_name() {
+            str = format!("{} - profile: {}", str, profile_name);
         }
 
         let cstr = std::ffi::CString::new(str).unwrap();

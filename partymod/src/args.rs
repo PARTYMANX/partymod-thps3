@@ -17,3 +17,12 @@ pub fn has_arg(arg: &str) -> bool {
 
     args_context.has_arg(arg)
 }
+
+pub fn get_arg_value(arg: &str) -> Option<String> {
+    let args_context = match unsafe { &mut *ARGS_CONTEXT.get() } {
+        Some(v) => v,
+        None => panic!("Tried to use uninitialized args context!"),
+    };
+
+    args_context.get_arg_value(arg)
+}

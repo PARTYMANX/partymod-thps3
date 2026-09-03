@@ -1,7 +1,7 @@
 use partymod_common::{logger::LogLevel, patch, syncunsafecell::SyncUnsafeCell};
 use raw_window_handle::HasWindowHandle;
 
-use crate::{VERSION, logger, sdl::SDL_CONTEXT};
+use crate::{logger, sdl::SDL_CONTEXT};
 
 pub struct WindowContext {
     window: Option<sdl3::video::Window>,
@@ -134,10 +134,9 @@ extern "C" fn get_or_create_window() -> isize {
             let ctx = &*SDL_CONTEXT.get();
 
             match ctx {
-                Some(v) => {
-                    v.video_subsystem
-                        .window(&format!("THPS3 - PARTYMOD {}", VERSION), res_x, res_y)
-                }
+                Some(v) => v
+                    .video_subsystem
+                    .window("THPS3 - PARTYMOD", res_x, res_y),
                 None => panic!("Tried to use uninitialized SDL context!"),
             }
         };

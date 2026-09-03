@@ -220,8 +220,9 @@ unsafe fn patch_tag_limit() {
 
         // Score::LogTrickObject
         // extend message size
-        patch::patch_u32((0x00435cfe + 1) as *mut (), max_size);
-        patch::patch_u32((0x00435dab + 1) as *mut (), max_size);
+        // disabled because it may cause other issues as in THPS4
+        // patch::patch_u32((0x00435cfe + 1) as *mut (), max_size);
+        // patch::patch_u32((0x00435dab + 1) as *mut (), max_size);
         // extend stack allocation
         patch::patch_u32((0x00435af5 + 2) as *mut (), (max_size * 2) + 0x58);
         // add back the stack
