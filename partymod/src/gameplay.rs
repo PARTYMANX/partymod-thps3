@@ -1,8 +1,8 @@
 use std::arch::asm;
 
-use partymod_common::{logger::LogLevel, patch, syncunsafecell::SyncUnsafeCell};
+use partymod_common::{patch, syncunsafecell::SyncUnsafeCell};
 
-use crate::{config, logger};
+use crate::config;
 
 struct GameplayContext {
     compatibility_mode: bool,
@@ -90,8 +90,6 @@ struct FixedPendingTricks {
 }
 
 extern "thiscall" fn pending_tricks_constructor(this: *mut Box<FixedPendingTricks>) {
-    //println!("constructor");
-
     unsafe {
         *this = Box::new(FixedPendingTricks {
             checksums: [0; MAX_PENDING_TRICKS],
@@ -101,8 +99,6 @@ extern "thiscall" fn pending_tricks_constructor(this: *mut Box<FixedPendingTrick
 }
 
 extern "thiscall" fn pending_tricks_flush_tricks(this: *mut Box<FixedPendingTricks>) -> bool {
-    //println!("flush");
-
     unsafe {
         (*this).trick_count = 0;
     }
@@ -114,24 +110,15 @@ extern "thiscall" fn pending_tricks_trick_off_object_wrapper(
     this: *mut Box<FixedPendingTricks>,
     obj: u32,
 ) -> u32 {
-    //println!("trick off");
-
     unsafe {
         let orig_func: unsafe extern "thiscall" fn(*const FixedPendingTricks, u32) -> u32 =
             std::mem::transmute(0x004bfc60);
-
-        logger::log(
-            LogLevel::Debug,
-            &format!("trick count: {}, {:#010x}", (*this).trick_count, obj),
-        );
 
         if (*this).trick_count > MAX_PENDING_TRICKS as u32 {
             (*this).trick_count = MAX_PENDING_TRICKS as u32;
         }
 
         let result = orig_func((*this).as_ref(), obj);
-
-        logger::log(LogLevel::Debug, &format!("result: {}", result));
 
         result
     }
@@ -142,8 +129,6 @@ extern "thiscall" fn pending_tricks_write_to_buffer_wrapper(
     buf: *const (),
     size: u32,
 ) -> u32 {
-    println!("write");
-
     unsafe {
         let orig_func: unsafe extern "thiscall" fn(
             *const FixedPendingTricks,
