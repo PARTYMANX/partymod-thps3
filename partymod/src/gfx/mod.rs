@@ -160,6 +160,7 @@ unsafe fn skater_shadow_render_wrapper(unk: u32) {
         let rw_d3d8_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x005540b0);
         let rw_d3d8_get_render_state: extern "C" fn(u32, *mut i32) =
             std::mem::transmute(0x005540f0);
+        let rw_d3d8_flush_state_cache: extern "C" fn() = std::mem::transmute(0x00553fe0);
 
         // going in, depth test/write have already been disabled.
 
@@ -176,9 +177,6 @@ unsafe fn skater_shadow_render_wrapper(unk: u32) {
         let mut current_dst_blend_state = 0;
         rw_d3d8_get_render_state(20, &mut current_dst_blend_state);
 
-        let mut current_blend_op_state = 0;
-        rw_d3d8_get_render_state(171, &mut current_blend_op_state);
-
         // disable alpha blending
         rw_set_render_state(12, 0);
         // draw two-sided
@@ -190,6 +188,8 @@ unsafe fn skater_shadow_render_wrapper(unk: u32) {
         // set blend function to add
         rw_d3d8_set_render_state(171, 1);
 
+        rw_d3d8_flush_state_cache();
+
         // draw the shadow
         orig_skater_shadow_render(unk);
 
@@ -198,7 +198,10 @@ unsafe fn skater_shadow_render_wrapper(unk: u32) {
         rw_set_render_state(20, current_cull_state);
         rw_d3d8_set_render_state(19, current_src_blend_state);
         rw_d3d8_set_render_state(20, current_dst_blend_state);
-        rw_d3d8_set_render_state(171, current_blend_op_state);
+        // always return blend op to add because later code may not set it.
+        rw_d3d8_set_render_state(171, 1);
+
+        rw_d3d8_flush_state_cache();
     }
 }
 
@@ -303,6 +306,8 @@ unsafe fn draw_blob_shadow() {
             std::mem::transmute(0x00561110);
         let rw_get_render_state: extern "C" fn(u32, *mut i32) = std::mem::transmute(0x0055ce60);
         let rw_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x0055ce10);
+        let rw_d3d8_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x005540b0);
+        let rw_d3d8_flush_state_cache: extern "C" fn() = std::mem::transmute(0x00553fe0);
 
         let vertex_count = *(0x00930bbc as *const u32);
         let p_vertices = 0x00928778 as *mut RW3DVertex;
@@ -340,6 +345,10 @@ unsafe fn draw_blob_shadow() {
         rw_set_render_state(11, 6);
         // set correct cull state
         rw_set_render_state(20, 1);
+        // set blend op to add, just in case
+        rw_d3d8_set_render_state(171, 1);
+
+        rw_d3d8_flush_state_cache();
 
         rw_im_3d_transform(p_vertices, vertex_count * 4, std::ptr::null(), 1);
         rw_im_3d_render_indexed_primitive(3, p_indices, vertex_count * 6);
@@ -349,6 +358,8 @@ unsafe fn draw_blob_shadow() {
         rw_set_render_state(10, current_src_blend_state);
         rw_set_render_state(11, current_dst_blend_state);
         rw_set_render_state(20, current_cull_state);
+
+        rw_d3d8_flush_state_cache();
     }
 }
 

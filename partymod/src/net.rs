@@ -1,9 +1,9 @@
 use partymod_common::{logger::LogLevel, patch, syncunsafecell::SyncUnsafeCell};
 
-use crate::{config, logger};
+use crate::{config, gameplay, logger};
 
 pub struct NetContext {
-    server_version: u32, // version number presented to clients
+    game_version: u32, // version number for checking client/server compatibility
 
     peerchat_url: Option<std::ffi::CString>,
     master_server_url: Option<std::ffi::CString>,
@@ -18,9 +18,23 @@ pub static NET_CONTEXT: SyncUnsafeCell<Option<NetContext>> = SyncUnsafeCell::new
 
 pub fn init() {
     unsafe {
+        let game_version = match gameplay::get_compatibility_mode() {
+            true => 0x00010001u32,  // 1.01
+            false => 0x00020000u32, // 2.00
+        };
+
+        let version_bytes = game_version.to_le_bytes();
+        let version_major = ((version_bytes[3] as u32) * 10) + version_bytes[2] as u32;
+        let version_minor = ((version_bytes[1] as u32) * 10) + version_bytes[0] as u32;
+
+        logger::log(
+            LogLevel::Info,
+            &format!("Game version: {}.{:02}", version_major, version_minor),
+        );
+
         let ctx = &mut *NET_CONTEXT.get();
         *ctx = Some(NetContext {
-            server_version: 0x00010001,
+            game_version,
 
             peerchat_url: None,
             master_server_url: None,
@@ -94,7 +108,7 @@ pub fn get_server_version() -> u32 {
         }
     };
 
-    net_ctx.server_version
+    net_ctx.game_version
 }
 
 #[repr(C)]

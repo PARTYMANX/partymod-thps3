@@ -1,4 +1,4 @@
-use partymod_common::patch;
+use partymod_common::{logger::LogLevel, patch};
 
 mod args;
 mod config;
@@ -46,13 +46,14 @@ fn init_patch() {
     }
 
     println!("PARTYMOD for THPS3 {}", VERSION);
+    logger::log(LogLevel::Info, &format!("PARTYMOD for THPS3 {}", VERSION));
 
-    net::init();
     misc::init();
     gfx::init();
     ilmode::init();
     gameplay::init();
     glyph::init();
+    net::init();
 }
 
 extern "C" fn init_and_get_version() -> u32 {
@@ -112,12 +113,17 @@ extern "C" fn get_version_number(script: *const std::ffi::c_void) -> u32 {
         let mut ptr = std::ptr::null();
         unk_func(script, c"id".as_ptr(), &mut ptr, 1);
 
-        let cstr = if ilmode::is_enabled() {
-            let str = &format!("{} - IL MODE ENABLED", VERSION);
-            std::ffi::CString::new(str.as_str()).unwrap()
-        } else {
-            std::ffi::CString::new(VERSION).unwrap()
-        };
+        let mut str = format!("{}", VERSION);
+
+        if gameplay::get_compatibility_mode() {
+            str = format!("{} (1.01 compatibility mode)", str);
+        }
+
+        if ilmode::is_enabled() {
+            str = format!("{} - IL MODE ENABLED", str);
+        }
+
+        let cstr = std::ffi::CString::new(str).unwrap();
 
         set_string(ptr, cstr.as_ptr());
     }
