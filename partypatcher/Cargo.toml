@@ -7,4 +7,4 @@ edition = "2024"
 
 [dependencies]
 libc = "0.2"
-partypatcher-common = { path = "../partypatcher-common" }
+partypatcher-common = { git = "https://github.com/PARTYMANX/partymod-common" }

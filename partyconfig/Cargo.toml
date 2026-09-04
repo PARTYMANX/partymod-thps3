@@ -5,8 +5,8 @@ edition = "2024"
 
 [dependencies]
 sdl3 = { version = "0.17.3", features = ["build-from-source", "raw-window-handle"] }
-pgui = { path = "../pgui" }
-partymod-config-common = { path = "../partymod-config-common" }
+pgui = { git = "https://github.com/PARTYMANX/partymod-common" }
+partymod-config-common = { git = "https://github.com/PARTYMANX/partymod-common" }
 partymod-config = { path = "../partymod-config" }
 
 [dependencies.windows]
