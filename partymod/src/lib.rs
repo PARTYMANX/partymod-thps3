@@ -32,6 +32,14 @@ fn init_patch() {
     config::init(exe_path.parent().unwrap());
 
     logger::init();
+
+    if config::get_bool("Miscellaneous", "Debug", false) {
+        partymod_common::console::init_console();
+    }
+
+    println!("PARTYMOD for THPS3 {}", VERSION);
+    logger::log(LogLevel::Info, &format!("PARTYMOD for THPS3 {}", VERSION));
+
     sdl::init();
     event::init();
     file::init();
@@ -41,13 +49,6 @@ fn init_patch() {
     event::register_handler(handle_exit_event);
     event::register_handler(window::handle_event);
     // NOTE: input event handler is registered when input is initialized
-
-    if config::get_bool("Miscellaneous", "Debug", false) {
-        partymod_common::console::init_console();
-    }
-
-    println!("PARTYMOD for THPS3 {}", VERSION);
-    logger::log(LogLevel::Info, &format!("PARTYMOD for THPS3 {}", VERSION));
 
     misc::init();
     gfx::init();

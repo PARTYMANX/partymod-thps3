@@ -1,4 +1,8 @@
-use partymod_common::syncunsafecell::SyncUnsafeCell;
+use std::path::Path;
+
+use partymod_common::{logger::LogLevel, syncunsafecell::SyncUnsafeCell};
+
+use crate::logger;
 
 pub struct SDLContext {
     pub sdl_context: sdl3::Sdl,
@@ -19,6 +23,15 @@ pub fn init() {
     let video_subsystem = sdl_context.video().unwrap();
     //let joystick_subsystem = sdl_context.joystick().unwrap();
     let gamepad_subsystem = sdl_context.gamepad().unwrap();
+
+    // load gamecontrollerdb
+    let path = Path::new("gamecontrollerdb.txt");
+    match gamepad_subsystem.load_mappings(path) {
+        Ok(_) => {},
+        Err(e) => {
+            logger::log(LogLevel::Warn, &format!("Failed to load game controller database: {}", e));
+        }
+    }
 
     unsafe {
         let ctx = &mut *SDL_CONTEXT.get();

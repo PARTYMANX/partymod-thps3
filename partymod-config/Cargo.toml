@@ -6,5 +6,5 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-sdl3 = { version = "0.17.3", features = ["build-from-source", "raw-window-handle"] }
+sdl3 = { version = "0.18.4", features = ["build-from-source", "raw-window-handle"] }
 partymod-config-common = { git = "https://github.com/PARTYMANX/partymod-common" }
