@@ -1,0 +1,3 @@
+./unmodified/can.tdx
+./modified/can.tdx
+Can_Sil_Wild_Water01_32.png M 0.60

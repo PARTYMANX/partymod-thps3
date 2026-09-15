@@ -91,6 +91,10 @@ pub fn init() {
         include_bytes!("patches/fountdx.bps"),
     );
     file::register_patch(
+        ".\\data\\levels\\can\\can.tdx",
+        include_bytes!("patches/cantdx.bps"),
+    );
+    file::register_patch(
         ".\\data\\levels\\rio\\rio.tdx",
         include_bytes!("patches/riotdx.bps"),
     );
@@ -444,6 +448,8 @@ unsafe fn patch_draw_side() {
         // fix blend dst factor for suburbia fence dirt and SI outdoor ramps
         // src alpha -> 1 - src alpha
         patch::patch_byte((0x004f4605 + 1) as *mut (), 6);
+        // texture op: modulate -> modulate 2x
+        patch::patch_byte((0x004f4623 + 1) as *mut (), 5);
 
         // fix blend op for airport screens
         // subtract -> add
