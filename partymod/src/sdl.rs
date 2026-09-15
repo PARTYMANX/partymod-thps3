@@ -27,9 +27,12 @@ pub fn init() {
     // load gamecontrollerdb
     let path = Path::new("gamecontrollerdb.txt");
     match gamepad_subsystem.load_mappings(path) {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
-            logger::log(LogLevel::Warn, &format!("Failed to load game controller database: {}", e));
+            logger::log(
+                LogLevel::Warn,
+                &format!("Failed to load game controller database: {}", e),
+            );
         }
     }
 

@@ -14,6 +14,7 @@ mod misc;
 mod movie;
 mod net;
 mod profile;
+mod script;
 mod sdl;
 mod settings;
 mod sfx;

@@ -9,6 +9,7 @@ use sdl3::keyboard::Scancode;
 use crate::{
     config, event, file,
     logger::{self, LOGGER_CONTEXT},
+    script,
     sdl::{SDL_CONTEXT, SDLContext},
 };
 
@@ -517,6 +518,36 @@ pub unsafe extern "C" fn toggle_skater_cam_wrapper(params: *mut (), script: *mut
     }
 }
 
+pub unsafe extern "C" fn vibration_on_wrapper(params: *mut (), script: *mut ()) -> u32 {
+    unsafe {
+        let orig_func: unsafe extern "C" fn(*mut (), *mut ()) -> u32 =
+            std::mem::transmute(0x0041f970 as *const ());
+
+        match script::get_script_checksum(script) {
+            0x23b1ae48 | 0xb0f3298c => {
+                // don't toggle vibration when playing block the car chase cutscene
+                1
+            }
+            _ => orig_func(params, script),
+        }
+    }
+}
+
+pub unsafe extern "C" fn vibration_off_wrapper(params: *mut (), script: *mut ()) -> u32 {
+    unsafe {
+        let orig_func: unsafe extern "C" fn(*mut (), *mut ()) -> u32 =
+            std::mem::transmute(0x0041f9c0 as *const ());
+
+        match script::get_script_checksum(script) {
+            0x23b1ae48 | 0xb0f3298c => {
+                // don't toggle vibration when playing block the car chase cutscene
+                1
+            }
+            _ => orig_func(params, script),
+        }
+    }
+}
+
 pub unsafe fn patch() {
     unsafe {
         patch::patch_jmp(0x0040db20 as *mut (), InputManager::init as *const ());
@@ -533,6 +564,15 @@ pub unsafe fn patch() {
         patch::patch_call(
             0x00463f3d as *mut (),
             InputManager::disable_actuator as *const (),
+        );
+
+        patch::patch_u32(
+            0x005b7de4 as *mut (),
+            vibration_on_wrapper as *const () as u32,
+        );
+        patch::patch_u32(
+            0x005b7ddc as *mut (),
+            vibration_off_wrapper as *const () as u32,
         );
 
         device::patch();

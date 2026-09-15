@@ -1,8 +1,6 @@
 use std::{ffi::CString, fs, path::Path, pin::Pin};
 
-use partymod_common::{
-    logger::LogLevel, patch, syncunsafecell::SyncUnsafeCell,
-};
+use partymod_common::{logger::LogLevel, patch, syncunsafecell::SyncUnsafeCell};
 
 use crate::{args, logger};
 
@@ -20,10 +18,21 @@ pub fn init() {
             let mut profile_safe = profile.to_lowercase();
             profile_safe.retain(|c| c.is_ascii_alphanumeric() || c == '-');
 
-            logger::log(LogLevel::Info, &format!("Using profile \"{}\"", profile_safe));
+            logger::log(
+                LogLevel::Info,
+                &format!("Using profile \"{}\"", profile_safe),
+            );
 
-            let pinned_profile_long = Pin::new(CString::new(format!("%ssettings\\OptionsAndPros\\{}\\main.opt", profile_safe)).unwrap());
-            let pinned_profile_short = Pin::new(CString::new(format!("/OptionsAndPros/{}/main.opt", profile_safe)).unwrap());
+            let pinned_profile_long = Pin::new(
+                CString::new(format!(
+                    "%ssettings\\OptionsAndPros\\{}\\main.opt",
+                    profile_safe
+                ))
+                .unwrap(),
+            );
+            let pinned_profile_short = Pin::new(
+                CString::new(format!("/OptionsAndPros/{}/main.opt", profile_safe)).unwrap(),
+            );
 
             // TODO: create path if it doesn't already exist
             let path_string = format!("./data/settings/OptionsAndPros/{}", profile_safe);
@@ -34,11 +43,17 @@ pub fn init() {
                 patch_save_file_path(&pinned_profile_long, &pinned_profile_short);
             }
 
-            (Some(profile_safe), pinned_profile_short, pinned_profile_long)
+            (
+                Some(profile_safe),
+                pinned_profile_short,
+                pinned_profile_long,
+            )
         }
-        None => {
-            (None, Pin::new(CString::from(c"")), Pin::new(CString::from(c"")))
-        }
+        None => (
+            None,
+            Pin::new(CString::from(c"")),
+            Pin::new(CString::from(c"")),
+        ),
     };
 
     unsafe {
@@ -60,9 +75,18 @@ pub fn get_profile_name() -> Option<String> {
     ctx.profile_name.clone()
 }
 
-unsafe fn patch_save_file_path(profile_string_long: &Pin<CString>, profile_string_short: &Pin<CString>) {
+unsafe fn patch_save_file_path(
+    profile_string_long: &Pin<CString>,
+    profile_string_short: &Pin<CString>,
+) {
     unsafe {
-        patch::patch_u32((0x0040a152 + 1) as *mut (), profile_string_long.as_ptr() as *const () as u32);
-        patch::patch_u32((0x0041481e + 1) as *mut (), profile_string_short.as_ptr() as *const () as u32);
+        patch::patch_u32(
+            (0x0040a152 + 1) as *mut (),
+            profile_string_long.as_ptr() as *const () as u32,
+        );
+        patch::patch_u32(
+            (0x0041481e + 1) as *mut (),
+            profile_string_short.as_ptr() as *const () as u32,
+        );
     }
 }

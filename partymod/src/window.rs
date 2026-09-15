@@ -134,9 +134,7 @@ extern "C" fn get_or_create_window() -> isize {
             let ctx = &*SDL_CONTEXT.get();
 
             match ctx {
-                Some(v) => v
-                    .video_subsystem
-                    .window("THPS3 - PARTYMOD", res_x, res_y),
+                Some(v) => v.video_subsystem.window("THPS3 - PARTYMOD", res_x, res_y),
                 None => panic!("Tried to use uninitialized SDL context!"),
             }
         };

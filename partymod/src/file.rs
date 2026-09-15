@@ -1,5 +1,8 @@
 use std::{
-    collections::HashMap, fs::OpenOptions, io::{Read, Seek, SeekFrom, Write}, path::Path,
+    collections::HashMap,
+    fs::OpenOptions,
+    io::{Read, Seek, SeekFrom, Write},
+    path::Path,
 };
 
 use partymod_common::{
