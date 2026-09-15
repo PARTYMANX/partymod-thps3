@@ -115,7 +115,7 @@ dependencies = [
 
 [[package]]
 name = "partymod"
-version = "2.0.0-preview02"
+version = "2.0.0-preview03"
 dependencies = [
  "cc",
  "libc",
