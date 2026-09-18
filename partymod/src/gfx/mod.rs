@@ -599,14 +599,24 @@ unsafe extern "stdcall" fn create_device_wrapper(
             *mut std::ffi::c_void,
         ) -> u32 = std::mem::transmute(gfx_context.orig_create_device);
 
+        // number of backbuffers
         *(present_params.byte_add(12) as *mut u32) = 1;
+        // swap effect. we're using D3DSWAPEFFECT_DISCARD
+        // originally D3DSWAPEFFECT_FLIP
         *(present_params.byte_add(20) as *mut u32) = 1;
 
+        // if windowed
         if *(present_params.byte_add(28) as *mut u32) != 0 {
+            // refresh rate, must be 0 for windowed
             *(present_params.byte_add(44) as *mut u32) = 0;
+            // swap interval, must be 0 for windowed
             *(present_params.byte_add(48) as *mut u32) = 0;
         } else {
+            // refresh rate. set to 0 to go for the highest possible
+            // originally 60
             *(present_params.byte_add(44) as *mut u32) = 0;
+            // swap interval of 1
+            // originally 0 | D3DPRESENT_INTERVAL_IMMEDIATE
             *(present_params.byte_add(48) as *mut u32) = 1;
         }
 
