@@ -1,6 +1,6 @@
 [package]
 name = "partymod"
-version = "2.0.0-preview03"
+version = "2.0.0-preview04"
 edition = "2024"
 
 [lib]

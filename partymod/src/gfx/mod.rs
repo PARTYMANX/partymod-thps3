@@ -311,6 +311,8 @@ unsafe fn draw_blob_shadow() {
         let rw_get_render_state: extern "C" fn(u32, *mut i32) = std::mem::transmute(0x0055ce60);
         let rw_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x0055ce10);
         let rw_d3d8_set_render_state: extern "C" fn(u32, i32) = std::mem::transmute(0x005540b0);
+        let rw_d3d8_get_render_state: extern "C" fn(u32, *mut i32) =
+            std::mem::transmute(0x005540f0);
         let rw_d3d8_flush_state_cache: extern "C" fn() = std::mem::transmute(0x00553fe0);
 
         let vertex_count = *(0x00930bbc as *const u32);
@@ -331,10 +333,10 @@ unsafe fn draw_blob_shadow() {
         rw_get_render_state(9, &mut current_filter_state);
 
         let mut current_src_blend_state = 0;
-        rw_get_render_state(10, &mut current_src_blend_state);
+        rw_d3d8_get_render_state(19, &mut current_src_blend_state);
 
         let mut current_dst_blend_state = 0;
-        rw_get_render_state(11, &mut current_dst_blend_state);
+        rw_d3d8_get_render_state(20, &mut current_dst_blend_state);
 
         let mut current_cull_state = 0;
         rw_get_render_state(20, &mut current_cull_state);
@@ -344,9 +346,9 @@ unsafe fn draw_blob_shadow() {
         // set filter to linear
         rw_set_render_state(9, 2);
         // set blend src to zero
-        rw_set_render_state(10, 1);
+        rw_d3d8_set_render_state(19, 1);
         // set blend dst to inverse src alpha
-        rw_set_render_state(11, 6);
+        rw_d3d8_set_render_state(20, 6);
         // set correct cull state
         rw_set_render_state(20, 1);
         // set blend op to add, just in case
@@ -359,8 +361,8 @@ unsafe fn draw_blob_shadow() {
 
         rw_set_render_state(12, current_alpha_state);
         rw_set_render_state(9, current_filter_state);
-        rw_set_render_state(10, current_src_blend_state);
-        rw_set_render_state(11, current_dst_blend_state);
+        rw_d3d8_set_render_state(19, current_src_blend_state);
+        rw_d3d8_set_render_state(20, current_dst_blend_state);
         rw_set_render_state(20, current_cull_state);
 
         rw_d3d8_flush_state_cache();
