@@ -4,6 +4,8 @@ use partymod_common::{patch, syncunsafecell::SyncUnsafeCell};
 
 use crate::{config, file, window};
 
+mod weight;
+
 pub struct GfxContext {
     orig_create_device: *const (),
 }
@@ -14,6 +16,8 @@ unsafe impl Send for GfxContext {}
 pub static GFX_CONTEXT: SyncUnsafeCell<Option<GfxContext>> = SyncUnsafeCell::new(None);
 
 pub fn init() {
+    weight::init();
+
     unsafe {
         let ctx = &mut *GFX_CONTEXT.get();
         *ctx = Some(GfxContext {

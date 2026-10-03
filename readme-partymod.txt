@@ -11,6 +11,7 @@ Features and Fixes:
 * Added selectable controller glyphs for PC, PS2, Japanese PS2, and Xbox
 * Improved cursor handling, no longer moving the cursor and only showing it when relevant
 * Many graphics fixes bringing the game up to the visual standard of the console versions
+* Restored Xbox-style create-a-skater weight and body-part deformation
 * Rewrote the movie player so that it now scales up to the window size
 * Improved window handling allowing for custom resolutions (now respecting scaled resolutions) and configurable windowing
 * Fixed aspect ratio to be based on window dimensions (previously it was based on the PS2 framebuffer at 10:7/640x448)
