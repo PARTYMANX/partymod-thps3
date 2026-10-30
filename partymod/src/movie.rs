@@ -11,6 +11,7 @@ use windows::{
         Media::MediaFoundation::{
             CLSID_MFMediaEngineClassFactory, IMFMediaEngine, IMFMediaEngineClassFactory,
             IMFMediaEngineNotify, IMFMediaEngineNotify_Impl, MF_MEDIA_ENGINE_CALLBACK,
+            MF_MEDIA_ENGINE_ERR, MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED,
             MF_MEDIA_ENGINE_EVENT_CANPLAY, MF_MEDIA_ENGINE_EVENT_ERROR,
             MF_MEDIA_ENGINE_EVENT_LOADSTART, MF_VERSION, MFCreateAttributes, MFShutdown, MFStartup,
         },
@@ -18,7 +19,7 @@ use windows::{
     },
     core::BSTR,
 };
-use windows_core::{IUnknown, implement};
+use windows_core::{HRESULT, IUnknown, implement};
 
 use crate::{event, input, logger, sfx, throttle, window};
 
@@ -164,11 +165,15 @@ impl MoviePlayer {
                     NotifyMessage::PlaybackReady => {
                         panic!("Movie was signalled playback ready before load ready received!")
                     }
-                    NotifyMessage::Error => {
+                    NotifyMessage::Error(error, result) => {
                         logger::log(
                             LogLevel::Error,
-                            &format!("Error creating movie player: Media engine signalled error"),
+                            &format!(
+                                "Error creating movie player: Media engine signalled error: {:?}: {:#010x?}",
+                                error, result,
+                            ),
                         );
+                        Self::do_codec_help_text(error, result);
 
                         let _ = unsafe { media_engine.Shutdown() };
 
@@ -195,11 +200,15 @@ impl MoviePlayer {
                     NotifyMessage::PlaybackReady => {
                         break;
                     }
-                    NotifyMessage::Error => {
+                    NotifyMessage::Error(error, result) => {
                         logger::log(
                             LogLevel::Error,
-                            &format!("Error creating movie player: Media engine signalled error"),
+                            &format!(
+                                "Error creating movie player: Media engine signalled error: {:?}: {:#010x?}",
+                                error, result,
+                            ),
                         );
+                        Self::do_codec_help_text(error, result);
 
                         let _ = unsafe { media_engine.Shutdown() };
 
@@ -358,11 +367,15 @@ impl MoviePlayer {
                 // check that the player hasn't run into an error
                 match self.recv.try_recv() {
                     Ok(v) => match v {
-                        NotifyMessage::Error => {
+                        NotifyMessage::Error(error, result) => {
                             logger::log(
                                 LogLevel::Error,
-                                &format!("Received error message during playback"),
+                                &format!(
+                                    "Received error message during playback: {:?}: {:#010x?}",
+                                    error, result,
+                                ),
                             );
+                            Self::do_codec_help_text(error, result);
                             return;
                         }
                         _ => {
@@ -733,6 +746,17 @@ impl MoviePlayer {
             false
         }
     }
+
+    fn do_codec_help_text(error: MF_MEDIA_ENGINE_ERR, _result: HRESULT) {
+        if error != MF_MEDIA_ENGINE_ERR_SRC_NOT_SUPPORTED {
+            return;
+        }
+
+        logger::log(
+            LogLevel::Error,
+            "MPEG-2 codec is likely not available. Install the MPEG-2 codec here: https://apps.microsoft.com/detail/9n95q1zzpmh4",
+        );
+    }
 }
 
 #[repr(C)]
@@ -805,7 +829,7 @@ impl Drop for MfCom {
 enum NotifyMessage {
     LoadReady,
     PlaybackReady,
-    Error,
+    Error(MF_MEDIA_ENGINE_ERR, HRESULT),
 }
 
 #[implement(IMFMediaEngineNotify)]
@@ -821,7 +845,12 @@ impl IMFMediaEngineNotify_Impl for MediaEngineNotify_Impl {
         } else if event == MF_MEDIA_ENGINE_EVENT_CANPLAY.0 as u32 {
             self.sender.send(NotifyMessage::PlaybackReady).unwrap();
         } else if event == MF_MEDIA_ENGINE_EVENT_ERROR.0 as u32 {
-            self.sender.send(NotifyMessage::Error).unwrap();
+            let error = MF_MEDIA_ENGINE_ERR(_param1 as i32);
+            let result = HRESULT(_param2 as i32);
+
+            self.sender
+                .send(NotifyMessage::Error(error, result))
+                .unwrap();
         } else {
         }
 
